@@ -48,6 +48,66 @@
         }
 
         // ============================================================
+        // 챗봇 ↔ 기사/보고서 연동 상태 동기화 UI 로직
+        // ============================================================
+        function updateChatContextUI(keyword = '', articleCount = 0, hasReport = false) {
+            const dot = document.getElementById('contextDot');
+            const text = document.getElementById('contextText');
+            const btn = document.getElementById('btnContextAction');
+            const quickActions = document.getElementById('quickActions');
+
+            if (!dot || !text || !btn) return;
+            dot.className = 'context-dot';
+
+            if (hasReport) {
+                dot.classList.add('active-report');
+                text.innerHTML = `연동 완료: <strong>'${keyword || '야구'}'</strong> AI 종합 보고서 & 기사 ${articleCount}건 참조 중`;
+                btn.innerText = '📄 보고서 보러가기';
+                btn.onclick = () => switchTab('research');
+
+                if (quickActions) {
+                    quickActions.innerHTML = `
+                        <button class="quick-btn" onclick="sendQuickMessage('방금 작성된 보고서의 핵심 요약 3줄을 더 쉽게 설명해줘')">📄 보고서 핵심 요약</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('보고서에서 언급된 주요 경기 승부처와 선수 활약상 알려줘')">⚾ 경기별 승부처</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('보고서 내용 바탕으로 앞으로 팀의 전력 전망을 분석해줘')">📊 향후 전력 전망</button>
+                    `;
+                }
+            } else if (articleCount > 0) {
+                dot.classList.add('active-articles');
+                text.innerHTML = `연동 중: <strong>'${keyword || '야구'}'</strong> 수집 기사 ${articleCount}건 참조 중`;
+                btn.innerText = '⚡ 보고서 작성하러 가기';
+                btn.onclick = () => switchTab('research');
+
+                if (quickActions) {
+                    quickActions.innerHTML = `
+                        <button class="quick-btn" onclick="sendQuickMessage('수집된 기사들에서 가장 활약이 돋보인 선수는 누구야?')">🔥 주요 활약 선수</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('수집된 전체 기사의 전반적인 이슈와 분위기를 요약해줘')">📰 수집 기사 분위기</button>
+                        <button class="quick-btn" onclick="switchTab('research')">📝 AI 보고서 작성 탭</button>
+                    `;
+                }
+            } else {
+                text.innerText = '연동 상태: 일반 야구 지식 모드 (수집 데이터 없음)';
+                btn.innerText = '📰 기사 수집하기';
+                btn.onclick = () => switchTab('research');
+
+                if (quickActions) {
+                    quickActions.innerHTML = `
+                        <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 탭으로 이동</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('최근 KBO 리그 주요 관전 포인트 알려줘')">⚾ 주요 관전 포인트</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('야구 기사 스크랩 및 요약 보고서 활용 팁 알려줘')">💡 보고서 활용 팁</button>
+                    `;
+                }
+            }
+        }
+
+        function handleAskBotAboutReport() {
+            switchTab('chat');
+            const defaultPrompt = "방금 작성된 AI 요약 보고서의 주요 핵심 내용과 경기 승부처를 알기 쉽게 풀어서 설명해줘.";
+            userInput.value = defaultPrompt;
+            handleSubmit();
+        }
+
+        // ============================================================
         // 챗봇 관련 로직
         // ============================================================
         const messagesContainer = document.getElementById('chatMessages');
@@ -174,6 +234,7 @@
                         currentArticles = res.articles || [];
                         renderArticles(currentArticles);
                         showToast(`${currentArticles.length}건의 기사를 수집했습니다! (최대 200건)`, '✅');
+                        updateChatContextUI(keyword, currentArticles.length, !!currentReportText);
                     } else {
                         showToast(res.message || '기사 수집에 실패했습니다.', '❌');
                     }
@@ -188,6 +249,7 @@
                         ];
                         renderArticles(currentArticles);
                         showToast(`${currentArticles.length}건의 기사를 수집했습니다. (테스트)`, '✅');
+                        updateChatContextUI(keyword, currentArticles.length, !!currentReportText);
                     }, 800);
                 }
             } catch (err) {
@@ -307,6 +369,10 @@
                     if (res && res.status === 'success') {
                         currentReportText = res.report_md;
                         renderReport(currentReportText);
+                        const askBotBtn = document.getElementById('btnAskBotAboutReport');
+                        if (askBotBtn) askBotBtn.style.display = 'inline-flex';
+                        updateChatContextUI(keyword, currentArticles.length, true);
+
                         if (res.saved_file) {
                             showToast(`보고서 작성 & 파일 저장 완료! (${res.saved_file})`, '📄');
                         } else {
@@ -322,6 +388,10 @@
                         statusBadge.innerText = '작성 완료';
                         currentReportText = `# ⚾ KBO 야구 뉴스 AI 브리핑 보고서\n\n**분석 기간**: ${startDate} ~ ${endDate}\n\n## 1. 핵심 3줄 요약\n- 수집된 기사를 기반으로 경기 및 선수단 주요 이슈 분석 완료\n- 선발 마운드와 클러치 타선의 활약이 주요 화두로 부상\n- 순위 다툼이 치열해짐에 따라 경기별 불펜 운용이 승패 좌우\n\n## 2. 세부 이슈 및 시사점\n- 주요 선수들의 부상 복귀와 엔트리 변동 체크 필요\n- 향후 잔여 경기 일정에 따른 맞춤형 전략 수립 전망`;
                         renderReport(currentReportText);
+                        const askBotBtn = document.getElementById('btnAskBotAboutReport');
+                        if (askBotBtn) askBotBtn.style.display = 'inline-flex';
+                        updateChatContextUI(keyword, currentArticles.length, true);
+
                         const today = new Date().toISOString().split('T')[0].slice(2).replace(/-/g, '');
                         showToast(`[테스트] 보고서 작성 및 ${keyword || '야구'}_보고서_${today}.md 저장 완료`, '📄');
                     }, 1000);
@@ -386,6 +456,16 @@
             }
         }
 
-        window.addEventListener('pywebviewready', () => {
+        window.addEventListener('pywebviewready', async () => {
             console.log('pywebview 브릿지가 준비되었습니다.');
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.get_context_status) {
+                try {
+                    const status = await window.pywebview.api.get_context_status();
+                    if (status && status.status === 'success') {
+                        updateChatContextUI(status.keyword, status.article_count, status.has_report);
+                    }
+                } catch (e) {
+                    console.error('초기 연동 상태 조회 실패:', e);
+                }
+            }
         });
