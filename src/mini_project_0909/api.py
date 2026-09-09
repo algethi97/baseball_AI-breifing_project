@@ -45,11 +45,23 @@ class BaseballBotAPI:
         self.current_report = ""
 
     # ============================================================
-    # 1. 챗봇 대화 인터페이스
+    # 1. 챗봇 대화 인터페이스 (기사 및 보고서 실시간 연동)
     # ============================================================
+    def get_context_status(self) -> dict:
+        """
+        현재 챗봇이 참조하고 있는 기사 수집 및 보고서 연동 상태를 반환합니다.
+        """
+        return {
+            "status": "success",
+            "has_articles": bool(self.collected_articles),
+            "article_count": len(self.collected_articles),
+            "keyword": self.current_keyword,
+            "has_report": bool(self.current_report),
+        }
+
     def send_message(self, message: str) -> dict:
         """
-        사용자의 챗봇 질문을 받아 OpenAI Responses API로 답변 반환
+        사용자의 챗봇 질문을 받아 수집된 기사 및 요약 보고서 컨텍스트와 함께 OpenAI Responses API로 답변 반환
         """
         user_text = message.strip()
         if not user_text:
@@ -57,6 +69,35 @@ class BaseballBotAPI:
 
         self.conversation_history.append({"role": "user", "content": user_text})
         trimmed_input = self.conversation_history[-10:]
+
+        # 현재 수집된 기사 및 생성된 요약 보고서 기반 동적 컨텍스트 조립
+        context_parts = [self.chat_instructions]
+
+        if self.current_report or self.collected_articles:
+            context_parts.append("\n\n[현재 연동된 야구 기사 & 보고서 데이터베이스]")
+            if self.current_keyword:
+                context_parts.append(f"- 현재 수집 검색어: '{self.current_keyword}'")
+            if self.collected_articles:
+                context_parts.append(f"- 수집된 기사 건수: 총 {len(self.collected_articles)}건")
+
+            if self.current_report:
+                context_parts.append(
+                    "\n[최근 생성된 AI 요약 보고서 전문]\n"
+                    f"{self.current_report}\n\n"
+                    "※ 지침: 사용자가 보고서의 내용, 핵심 요약, 경기 리뷰, 세부 분석 등에 대해 질문하면 위 보고서 전문을 기반으로 명확하고 구체적으로 답변하세요."
+                )
+            elif self.collected_articles:
+                articles_list = [
+                    f"- [{a.get('date', '')}] {a.get('title', '')} ({a.get('press', '')}) : {a.get('snippet', '')[:80]}"
+                    for a in self.collected_articles[:50]
+                ]
+                context_parts.append(
+                    "\n[수집된 주요 기사 목록 (일부 발췌)]\n"
+                    + "\n".join(articles_list)
+                    + "\n\n※ 지침: 사용자가 수집된 기사에 대해 물어보면 위 목록을 참고하여 신뢰성 높게 답변하세요."
+                )
+
+        current_instructions = "\n".join(context_parts)
 
         try:
             if not self.client:
@@ -67,7 +108,7 @@ class BaseballBotAPI:
 
             response = self.client.responses.create(
                 model=self.model,
-                instructions=self.chat_instructions,
+                instructions=current_instructions,
                 input=trimmed_input,
             )
             bot_reply = response.output_text.strip()
