@@ -1,6 +1,9 @@
 // 전역 상태
         let currentArticles = [];
         let currentReportText = '';
+        let currentStadiumWeather = [];
+        let currentWeatherFilter = 'all';
+        let weatherLoaded = false;
 
         // 초기 날짜 기본값 세팅 (최근 7일) 및 기간 연동
         window.addEventListener('DOMContentLoaded', () => {
@@ -43,8 +46,15 @@
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
 
-            document.getElementById(`tabBtn-${tabId}`).classList.add('active');
-            document.getElementById(`panel-${tabId}`).classList.add('active');
+            const targetBtn = document.getElementById(`tabBtn-${tabId}`);
+            const targetPanel = document.getElementById(`panel-${tabId}`);
+            if (targetBtn) targetBtn.classList.add('active');
+            if (targetPanel) targetPanel.classList.add('active');
+
+            // 구장 날씨 탭 최초 전환 시 자동 로드
+            if (tabId === 'weather' && !weatherLoaded) {
+                loadStadiumWeather();
+            }
         }
 
         // ============================================================
@@ -469,3 +479,151 @@
                 }
             }
         });
+
+        // ============================================================
+        // 구장별 실시간 날씨 대시보드 로직
+        // ============================================================
+        async function loadStadiumWeather(force = false) {
+            const btn = document.getElementById('btnRefreshWeather');
+            const container = document.getElementById('stadiumWeatherGrid');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> 조회 중...';
+            }
+
+            if (force || !currentStadiumWeather || currentStadiumWeather.length === 0) {
+                if (container) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">⏳</div>
+                            <div class="empty-state-text">기상청에서 전국 11개 야구장 실시간 날씨 데이터를 수신하고 있습니다...</div>
+                        </div>`;
+                }
+            }
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.get_stadiums_weather) {
+                    const res = await window.pywebview.api.get_stadiums_weather();
+                    if (res && res.status === 'success') {
+                        currentStadiumWeather = res.stadiums || [];
+                        weatherLoaded = true;
+                        const timeBadge = document.getElementById('weatherTimeBadge');
+                        if (timeBadge && res.base_datetime) {
+                            timeBadge.innerText = res.base_datetime;
+                        }
+                        renderStadiumCards();
+                        showToast(`전국 ${currentStadiumWeather.length}개 구장 실시간 기상정보 갱신 완료!`, '☀️');
+                    } else {
+                        showToast(res.message || '기상청 데이터 조회 실패', '❌');
+                    }
+                } else {
+                    // 브라우저 단독 테스트 모드 더미
+                    setTimeout(() => {
+                        currentStadiumWeather = [
+                            { id: 'jamsil', name: '서울 잠실야구장', team_short: 'LG / 두산', city: '서울 송파', color: '#C30452', temp: '25.0℃', rain: '0.0 mm', humidity: '45%', wind_speed: '2.1 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'gocheok', name: '서울 고척스카이돔', team_short: '키움', city: '서울 구로', color: '#820024', temp: '24.2℃', rain: '0.0 mm', humidity: '48%', wind_speed: '1.5 m/s', is_dome: true, is_secondary: false, icon: '☀️', status_label: '🛡️ 돔구장 (기상 무관)', badge_class: 'badge-dome', status_desc: '실내 돔구장으로 날씨와 상관없이 100% 정상 진행됩니다.' },
+                            { id: 'munhak', name: '인천 SSG랜더스필드', team_short: 'SSG', city: '인천 미추홀', color: '#CE0E2D', temp: '24.6℃', rain: '0.0 mm', humidity: '50%', wind_speed: '2.5 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'suwon', name: '수원 KT위즈파크', team_short: 'KT', city: '경기 수원', color: '#000000', temp: '25.2℃', rain: '0.0 mm', humidity: '46%', wind_speed: '1.7 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'daejeon', name: '대전 한화생명이글스파크', team_short: '한화', city: '대전 중구', color: '#FF6600', temp: '26.1℃', rain: '0.0 mm', humidity: '42%', wind_speed: '1.8 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'daegu', name: '대구 삼성라이온즈파크', team_short: '삼성', city: '대구 수성', color: '#074CA1', temp: '27.3℃', rain: '0.0 mm', humidity: '40%', wind_speed: '2.0 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'gwangju', name: '광주-기아 챔피언스필드', team_short: 'KIA', city: '광주 북구', color: '#EA0029', temp: '26.5℃', rain: '0.0 mm', humidity: '44%', wind_speed: '1.9 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'sajik', name: '부산 사직야구장', team_short: '롯데', city: '부산 동래', color: '#002955', temp: '25.8℃', rain: '0.0 mm', humidity: '53%', wind_speed: '2.8 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'changwon', name: '창원 NC파크', team_short: 'NC', city: '경남 창원', color: '#315288', temp: '26.0℃', rain: '0.0 mm', humidity: '49%', wind_speed: '2.2 m/s', is_dome: false, is_secondary: false, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'pohang', name: '포항야구장 (제2구장)', team_short: '삼성 (제2구장)', city: '경북 포항', color: '#074CA1', temp: '24.8℃', rain: '0.0 mm', humidity: '55%', wind_speed: '3.2 m/s', is_dome: false, is_secondary: true, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' },
+                            { id: 'ulsan', name: '울산문수야구장 (제2구장)', team_short: '롯데 (제2구장)', city: '울산 남구', color: '#002955', temp: '25.4℃', rain: '0.0 mm', humidity: '52%', wind_speed: '2.0 m/s', is_dome: false, is_secondary: true, icon: '☀️', status_label: '🟢 정상 진행 가능', badge_class: 'badge-safe', status_desc: '강수가 없어 쾌적하게 경기가 진행될 예정입니다.' }
+                        ];
+                        weatherLoaded = true;
+                        renderStadiumCards();
+                        showToast('전국 11개 구장 날씨 조회 완료 (테스트)', '☀️');
+                    }, 600);
+                }
+            } catch (e) {
+                showToast(`날씨 조회 오류: ${e.message || e}`, '❌');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>🔄</span> 날씨 새로고침';
+                }
+            }
+        }
+
+        function filterStadiums(filterType) {
+            currentWeatherFilter = filterType;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            const target = document.getElementById(`filterBtn-${filterType}`);
+            if (target) target.classList.add('active');
+            renderStadiumCards();
+        }
+
+        function renderStadiumCards() {
+            const container = document.getElementById('stadiumWeatherGrid');
+            if (!container) return;
+
+            let list = currentStadiumWeather || [];
+            if (currentWeatherFilter === 'main') {
+                list = list.filter(s => !s.is_secondary);
+            } else if (currentWeatherFilter === 'secondary') {
+                list = list.filter(s => s.is_secondary);
+            }
+
+            if (list.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <div class="empty-state-icon">🔍</div>
+                        <div class="empty-state-text">해당 조건에 맞는 구장 정보가 없습니다.</div>
+                    </div>`;
+                return;
+            }
+
+            let html = '';
+            list.forEach(s => {
+                const topBarColor = s.color || '#0f2b5c';
+                const teamTagStyle = `background: ${s.color || '#0f2b5c'};`;
+                html += `
+                    <div class="stadium-card">
+                        <div class="stadium-card-top-bar" style="background: ${topBarColor};"></div>
+                        <div class="stadium-card-header">
+                            <div class="stadium-info">
+                                <div class="stadium-name">
+                                    <span>${s.name}</span>
+                                </div>
+                                <div class="stadium-city">📍 ${s.city}</div>
+                            </div>
+                            <span class="team-tag" style="${teamTagStyle}">${s.team_short}</span>
+                        </div>
+
+                        <div class="stadium-card-main">
+                            <div class="weather-temp-wrap">
+                                <span class="weather-large-icon">${s.icon || '☀️'}</span>
+                                <span class="weather-temp">${s.temp || '--'}</span>
+                            </div>
+                            <span class="game-status-badge ${s.badge_class || 'badge-safe'}">
+                                ${s.status_label || '정상 진행'}
+                            </span>
+                        </div>
+
+                        <div class="stadium-metrics-grid">
+                            <div class="metric-chip">
+                                <span class="metric-label">🌧️ 강수량</span>
+                                <span class="metric-value">${s.rain || '0.0 mm'}</span>
+                            </div>
+                            <div class="metric-chip">
+                                <span class="metric-label">💧 습도</span>
+                                <span class="metric-value">${s.humidity || '--'}</span>
+                            </div>
+                            <div class="metric-chip">
+                                <span class="metric-label">💨 풍속</span>
+                                <span class="metric-value">${s.wind_speed || '0.0 m/s'}</span>
+                            </div>
+                        </div>
+
+                        <div class="stadium-card-footer">
+                            <span>ℹ️</span>
+                            <span>${s.status_desc || '정상 경기 가능 상태입니다.'}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
