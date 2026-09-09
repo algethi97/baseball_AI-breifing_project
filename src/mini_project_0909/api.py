@@ -196,53 +196,71 @@ class BaseballBotAPI:
         if not filtered:
             filtered = self.collected_articles
 
-        # 상위 기사들의 상세 본문 크롤링 결합 (더욱 정교한 보고서 생성)
-        articles_detail_list = []
-        for i, a in enumerate(filtered[:5]):
-            full_text = fetch_article_content(a["url"])
-            body_summary = full_text[:400] if full_text else a["snippet"]
-            articles_detail_list.append(
-                f"[{i+1}] 언론사: {a['press']} | 날짜: {a['date']} | 제목: {a['title']}\n"
-                f"원문 URL: {a['url']}\n"
-                f"내용 발췌: {body_summary}\n"
-            )
+        total_count = len(filtered)
+        # 날짜순 정렬
+        sorted_articles = sorted(filtered, key=lambda x: x.get("date", ""), reverse=False)
 
-        articles_summary_text = "\n".join(articles_detail_list)
+        # 1. 일자별 대표 기사 상세 본문 추출 (각 일자별 1건씩 최대 8건 발췌하여 깊이 있는 분석 지원)
+        seen_dates = set()
+        representative_details = []
+        for a in sorted_articles:
+            d = a.get("date", "")
+            if d not in seen_dates and len(representative_details) < 8:
+                seen_dates.add(d)
+                full_text = fetch_article_content(a["url"])
+                if full_text:
+                    representative_details.append(
+                        f"■ [{d} 대표 기사] 언론사: {a['press']} | 제목: {a['title']}\n"
+                        f"본문 요약: {full_text[:350]}\n"
+                    )
+
+        rep_text = "\n".join(representative_details) if representative_details else "대표 본문 발췌 없음"
+
+        # 2. 수집된 전체 기사 목록 (1건도 빠짐없이 종합 분석할 수 있도록 제공)
+        all_articles_list = []
+        for i, a in enumerate(sorted_articles):
+            snippet_str = f" : {a['snippet'][:80]}" if a.get("snippet") else ""
+            all_articles_list.append(
+                f"[{i+1}] 날짜: {a['date']} | 언론사: {a['press']} | 제목: {a['title']}{snippet_str}"
+            )
+        all_articles_text = "\n".join(all_articles_list)
 
         instructions = (
-            "당신은 전문 야구 분석가이자 스포츠 칼럼니스트입니다.\n"
-            "네이버 스포츠(sports.news.naver.com)에서 수집된 실제 기사들을 바탕으로, 야구 팬과 코치진을 위한 전문적인 '야구 뉴스 요약 및 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
+            "당신은 프로야구(KBO) 전문 데이터 분석가이자 스포츠 칼럼니스트입니다.\n"
+            f"수집된 전체 야구 뉴스 기사(총 {total_count}건)를 빠짐없이 종합 분석하여, 야구 팬과 코치진을 위한 전문적이고 심층적인 '야구 뉴스 종합 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
             "[작성 형식 및 필수 규칙]\n"
-            "1. # ⚾ 야구 뉴스 종합 브리핑 보고서 (제목 및 대상 기간)\n"
-            "2. ## 1. 핵심 3줄 요약 (가장 중요한 흐름 및 이슈 3가지)\n"
-            "3. ## 2. 구단 및 선수단 주요 이슈 분석 (투타 흐름, 선수 성적, 활약상, 인터뷰 포인트)\n"
-            "   - **필수 규칙 1 (경기/기사 날짜 명시)**: 선수의 활약상이나 경기 결과를 서술할 때, 반드시 해당 경기 또는 기사의 날짜(예: '9월 8일 경기에서...', '9월 7일 기사에 따르면...')를 문장 내에 명확히 명시하세요.\n"
-            "   - **필수 규칙 2 (기사 원문 링크 첨부)**: 각 활약상이나 핵심 이슈 문장 끝에 반드시 해당 기사의 실제 원문 링크를 `[언론사명 기사 보기](기사URL)` 형식의 마크다운 하이퍼링크로 첨부하세요.\n"
-            "4. ## 3. 전문가 총평 및 향후 전망\n"
-            "5. ## 4. 참고 기사 출처 및 원문 링크\n"
-            "   - 수집된 기사들을 `- [언론사] 기사 제목: [기사 원문 보기](기사URL) (발행일: 날짜)` 형식으로 빠짐없이 정리하세요.\n\n"
-            "※ 주의: URL은 반드시 위에 제공된 실제 네이버 스포츠 기사의 '원문 URL'만을 정확하게 사용해야 하며, 절대 임의로 조작하거나 존재하지 않는 가상의 URL을 생성하지 마세요."
+            f"1. # ⚾ 야구 뉴스 종합 브리핑 보고서 (대상 기간: {start_date} ~ {end_date}, 총 {total_count}건 기사 분석)\n"
+            "2. ## 1. 핵심 3줄 요약 (기간 전체를 관통하는 가장 중요한 핵심 이슈 3가지)\n"
+            "3. ## 2. 구단 및 선수단 주요 경기 리뷰 & 활약상 분석\n"
+            "   - **필수 지침 1 (경기 날짜 명확 기재)**: 경기에 대한 리뷰(경기 결과, 승패, 득점, 투타 기록, 승부처)나 선수의 경기 활약상을 서술할 때는 반드시 해당 경기가 치러진 날짜(예: '9월 8일 경기에서는...', '9월 5일 경기에서 심우준 선수가...')를 문장에 명확하고 구체적으로 기재하세요.\n"
+            "   - **필수 지침 2 (기사 링크 제거)**: 문장이나 본문에 기사 URL 링크([기사 보기](...))를 첨부하지 마세요. 깔끔하고 전문적인 순수 텍스트 리포트 양식으로 가독성 높게 작성하세요.\n"
+            "4. ## 3. 부상/엔트리 변동 및 팀 전력 분석\n"
+            "5. ## 4. 전문가 총평 및 향후 경기 전망\n"
+            "6. ## 5. 주요 참고 기사 목록\n"
+            "   - 보고서 작성에 중요하게 활용된 대표 기사들을 `- [언론사] 기사 제목 (날짜)` 형식의 리스트로 정리하세요. (URL 링크는 넣지 마세요.)\n\n"
+            f"※ 중요: 특정 몇 개 기사에 치우치지 말고, 제공된 전체 기사 목록({total_count}건)의 시간 흐름과 전반적인 내용을 균형 있게 종합하여 완성도 높은 보고서를 작성하세요."
         )
 
         user_input = (
-            f"대상 기간: {start_date} ~ {end_date}\n"
-            f"수집된 네이버 스포츠 야구 기사 목록:\n\n{articles_summary_text}\n\n"
-            "위 기사들을 종합하여 심층 분석 보고서를 작성해주세요."
+            f"분석 대상 기간: {start_date} ~ {end_date} (수집된 기사 총 {total_count}건)\n\n"
+            f"[일자별 주요 대표 기사 상세 발췌]\n{rep_text}\n\n"
+            f"[수집된 전체 기사 목록 ({total_count}건)]\n{all_articles_text}\n\n"
+            f"위 수집된 전체 기사({total_count}건)를 종합 분석하여, 경기 날짜가 명확히 명시된 고품질 야구 종합 분석 보고서를 작성해주세요."
         )
 
         try:
             if not self.client:
                 report_md = (
                     f"# ⚾ 야구 뉴스 종합 브리핑 보고서\n\n"
-                    f"**분석 기간**: {start_date} ~ {end_date} (총 {len(filtered)}건 분석)\n\n"
+                    f"**분석 기간**: {start_date} ~ {end_date} (총 {total_count}건 기사 종합 분석)\n\n"
                     f"## 1. 핵심 3줄 요약\n"
-                    f"- 네이버 스포츠 기사 {len(filtered)}건을 바탕으로 분석을 완료했습니다.\n"
-                    f"- 경기 주요 포인트 및 선수단 컨디션 지표 확인 완료.\n"
-                    f"- 세부 활약상 및 경기 일정에 따른 맞춤형 리포트 제공.\n\n"
-                    f"## 2. 구단 및 선수단 주요 이슈 분석\n"
-                    + "\n".join([f"- **[{a['date']} 경기/기사]** {a['title']} — [{a['press']} 기사 보기]({a['url']})" for a in filtered[:5]]) + "\n\n"
-                    f"## 3. 참고 기사 출처 및 원문 링크\n"
-                    + "\n".join([f"- [{a['press']}] {a['title']}: [기사 원문 보기]({a['url']}) (발행일: {a['date']})" for a in filtered])
+                    f"- 기간 내 네이버 스포츠 야구 기사 총 {total_count}건을 종합 분석했습니다.\n"
+                    f"- 주요 경기 결과 및 일자별 선수단 컨디션 지표 확인 완료.\n"
+                    f"- 세부 활약상 및 잔여 경기 일정에 따른 맞춤형 리포트 제공.\n\n"
+                    f"## 2. 구단 및 선수단 주요 경기 리뷰 & 활약상 분석\n"
+                    + "\n".join([f"- **[{a['date']} 경기]** {a['title']} ({a['press']})" for a in sorted_articles[:10]]) + "\n\n"
+                    f"## 3. 주요 참고 기사 목록\n"
+                    + "\n".join([f"- [{a['press']}] {a['title']} ({a['date']})" for a in sorted_articles[:15]])
                 )
             else:
                 response = self.client.responses.create(
@@ -256,7 +274,7 @@ class BaseballBotAPI:
             return {
                 "status": "success",
                 "report_md": report_md,
-                "count": len(filtered),
+                "count": total_count,
             }
 
         except Exception as e:
