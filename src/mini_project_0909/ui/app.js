@@ -2,7 +2,7 @@
         let currentArticles = [];
         let currentReportText = '';
 
-        // 초기 날짜 기본값 세팅 (최근 7일)
+        // 초기 날짜 기본값 세팅 (최근 7일) 및 기간 연동
         window.addEventListener('DOMContentLoaded', () => {
             const today = new Date();
             const lastWeek = new Date();
@@ -10,10 +10,23 @@
 
             const formatDate = (d) => d.toISOString().split('T')[0];
             
-            document.getElementById('crawlStartDate').value = formatDate(lastWeek);
-            document.getElementById('crawlEndDate').value = formatDate(today);
-            document.getElementById('reportStartDate').value = formatDate(lastWeek);
-            document.getElementById('reportEndDate').value = formatDate(today);
+            const crawlStart = document.getElementById('crawlStartDate');
+            const crawlEnd = document.getElementById('crawlEndDate');
+            const reportStart = document.getElementById('reportStartDate');
+            const reportEnd = document.getElementById('reportEndDate');
+
+            crawlStart.value = formatDate(lastWeek);
+            crawlEnd.value = formatDate(today);
+            reportStart.value = formatDate(lastWeek);
+            reportEnd.value = formatDate(today);
+
+            // [기능 추가] 수집 기간 변경 시 보고서 작성 탭의 기간도 자동 연동
+            crawlStart.addEventListener('change', () => {
+                if (crawlStart.value) reportStart.value = crawlStart.value;
+            });
+            crawlEnd.addEventListener('change', () => {
+                if (crawlEnd.value) reportEnd.value = crawlEnd.value;
+            });
         });
 
         // 토스트 알림
@@ -123,6 +136,14 @@
             const keyword = document.getElementById('crawlKeyword').value.trim();
             const startDate = document.getElementById('crawlStartDate').value;
             const endDate = document.getElementById('crawlEndDate').value;
+
+            // [기능 추가] 기사 수집 기간을 우측 보고서 작성 탭의 기간과 자동 연동
+            if (startDate) {
+                document.getElementById('reportStartDate').value = startDate;
+            }
+            if (endDate) {
+                document.getElementById('reportEndDate').value = endDate;
+            }
 
             if (!keyword) {
                 showToast('검색할 키워드를 입력해주세요.', '⚠️');
