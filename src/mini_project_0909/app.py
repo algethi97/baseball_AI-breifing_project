@@ -23,8 +23,8 @@ def start_chatbot():
         min_size=(800, 600)
     )
     
-    # 데스크톱 창 실행 (F12 개발자 도구 지원)
-    webview.start(debug=True)
+    # 데스크톱 창 실행 (debug=False로 설정하여 DevTool 창 자동 팝업 방지)
+    webview.start(debug=False)
 
 if __name__ == "__main__":
     start_chatbot()
