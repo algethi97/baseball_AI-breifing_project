@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>야구 뉴스 브리핑 & 분석 시스템</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Top Header with Tab Navigation -->
+    <header class="app-header">
+        <div class="header-brand">
+            <div class="header-logo">⚾</div>
+            <div class="header-title">
+                <h1>야구 뉴스 브리핑 & 분석 시스템</h1>
+                <p>기사 실시간 수집 · 맞춤 요약 보고서 · CSV/MD 데이터 추출</p>
+            </div>
+        </div>
+
+        <!-- Tab Buttons -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('chat')" id="tabBtn-chat">
+                <span>💬</span> AI 챗봇
+            </button>
+            <button class="tab-btn" onclick="switchTab('research')" id="tabBtn-research">
+                <span>📰</span> 기사 수집 & 요약 보고서
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- =======================================================
+             TAB 1: AI 챗봇
+             ======================================================= -->
+        <section class="tab-panel active" id="panel-chat">
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message-row bot">
+                        <div class="avatar bot">⚾</div>
+                        <div>
+                            <div class="bubble">
+                                안녕하세요! <strong>야구 브리핑 AI</strong>입니다. ⚾<br><br>
+                                OpenAI API와 연결되어 실시간 질의응답이 가능합니다.<br>
+                                특정 기사 수집이나 요약 보고서가 필요하시면 상단의 <strong>[📰 기사 수집 & 요약 보고서]</strong> 탭을 이용해보세요!
+                                <span class="timestamp">시스템 안내</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="message-row bot typing-indicator" id="typingIndicator">
+                        <div class="avatar bot">⚾</div>
+                        <div class="bubble" style="display:flex; align-items:center; gap:5px; padding: 12px 16px;">
+                            <span class="typing-dot"></span>
+                            <span class="typing-dot"></span>
+                            <span class="typing-dot"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 탭으로 이동</button>
+                    <button class="quick-btn" onclick="sendQuickMessage('최근 KBO 리그 주요 관전 포인트 알려줘')">⚾ 주요 관전 포인트</button>
+                    <button class="quick-btn" onclick="sendQuickMessage('야구 기사 스크랩 및 요약 보고서 활용 팁 알려줘')">💡 보고서 활용 팁</button>
+                </div>
+
+                <div class="chat-input-container">
+                    <form class="input-form" id="chatForm" onsubmit="handleSubmit(event)">
+                        <input type="text" id="userInput" class="chat-input" placeholder="야구에 대해 자유롭게 질문해보세요..." autocomplete="off">
+                        <button type="submit" class="send-button" title="전송">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- =======================================================
+             TAB 2: 기사 수집 & 요약 보고서 (좌우 2분할 뷰)
+             ======================================================= -->
+        <section class="tab-panel" id="panel-research">
+            <div class="research-split-container">
+                
+                <!-- 1. 좌측 패널: 기사 수집 영역 -->
+                <div class="split-panel left">
+                    <div class="panel-header">
+                        <div class="panel-header-title">
+                            <span>🔍</span>
+                            <span>야구 기사 수집</span>
+                        </div>
+                        <span class="panel-badge" id="articleCountBadge">수집된 기사: 0건</span>
+                    </div>
+
+                    <div class="panel-controls">
+                        <div class="form-group">
+                            <label class="form-label" for="crawlKeyword">검색 키워드</label>
+                            <input type="text" id="crawlKeyword" class="form-input" placeholder="예: 한화 이글스, 류현진, 포스트시즌, 가을야구">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">수집 기간</label>
+                            <div class="date-range-wrap">
+                                <input type="date" id="crawlStartDate" class="form-input" style="flex:1;">
+                                <span style="color:var(--text-muted);">~</span>
+                                <input type="date" id="crawlEndDate" class="form-input" style="flex:1;">
+                            </div>
+                        </div>
+
+                        <div class="btn-group">
+                            <button class="btn btn-primary" id="btnCrawl" onclick="handleCrawlArticles()">
+                                <span>📥</span> 기사 수집
+                            </button>
+                            <button class="btn btn-secondary" id="btnExportCsv" onclick="handleExportCsv()">
+                                <span>💾</span> 데이터 CSV 추출
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="panel-body" id="articleListContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📰</div>
+                            <div class="empty-state-text">
+                                키워드와 기간을 설정한 후<br>
+                                <strong>[기사 수집]</strong> 버튼을 누르면 기사 목록이 출력됩니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 우측 패널: 보고서 작성 영역 -->
+                <div class="split-panel right">
+                    <div class="panel-header">
+                        <div class="panel-header-title">
+                            <span>📝</span>
+                            <span>AI 요약 보고서 작성</span>
+                        </div>
+                        <span class="panel-badge" id="reportStatusBadge">대기 중</span>
+                    </div>
+
+                    <div class="panel-controls">
+                        <div class="form-group">
+                            <label class="form-label">보고서 대상 기간 (수집 기사 필터링)</label>
+                            <div class="date-range-wrap">
+                                <input type="date" id="reportStartDate" class="form-input" style="flex:1;">
+                                <span style="color:var(--text-muted);">~</span>
+                                <input type="date" id="reportEndDate" class="form-input" style="flex:1;">
+                            </div>
+                        </div>
+
+                        <div class="btn-group">
+                            <button class="btn btn-accent" id="btnGenerateReport" onclick="handleGenerateReport()">
+                                <span>⚡</span> 보고서 작성
+                            </button>
+                            <button class="btn btn-outline" id="btnSaveReportMd" onclick="handleSaveReportMd()">
+                                <span>📄</span> 보고서 저장 (.md)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="panel-body" id="reportOutputContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div class="empty-state-text">
+                                좌측에서 기사를 수집한 뒤 기간을 설정하고<br>
+                                <strong>[보고서 작성]</strong> 버튼을 누르면 AI 맞춤 분석 보고서가 생성됩니다.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Global Toast Alert -->
+    <div class="toast" id="toastNotice">
+        <span id="toastIcon">ℹ️</span>
+        <span id="toastMessage">알림 내용</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
