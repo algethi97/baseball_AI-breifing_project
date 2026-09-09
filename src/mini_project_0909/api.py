@@ -12,6 +12,7 @@ from openai import OpenAI
 import pandas as pd
 
 from mini_project_0909.crawler import search_naver_sports_articles, fetch_article_content
+from mini_project_0909.weather import get_all_stadiums_weather
 
 load_dotenv(override=True)
 
@@ -33,7 +34,8 @@ class BaseballBotAPI:
             "[주요 역할]\n"
             "1. 야구 경기 규칙, 구단 소식, 최신 이슈 및 선수 정보에 대해 명확하고 흥미롭게 답변합니다.\n"
             "2. 상단 탭에서 '기사 수집 & 요약 보고서' 기능을 통해 sports.news.naver.com 기사 크롤링 및 CSV/MD 저장을 지원함을 안내합니다.\n"
-            "3. 답변은 가독성 좋게 핵심 위주로 불릿포인트나 단락을 나누어 작성하세요."
+            "3. '구장별 실시간 날씨' 탭을 통해 전국 KBO 구장의 실시간 기상 상태 및 우천 취소 가능성 정보를 제공함을 안내합니다.\n"
+            "4. 답변은 가독성 좋게 핵심 위주로 불릿포인트나 단락을 나누어 작성하세요."
         )
 
         # 챗봇 대화 기록
@@ -43,6 +45,9 @@ class BaseballBotAPI:
         self.collected_articles = []
         self.current_keyword = ""
         self.current_report = ""
+
+        # 실시간 전국 구장 날씨 캐시
+        self.latest_weather_data = None
 
     # ============================================================
     # 1. 챗봇 대화 인터페이스 (기사 및 보고서 실시간 연동)
@@ -96,6 +101,17 @@ class BaseballBotAPI:
                     + "\n".join(articles_list)
                     + "\n\n※ 지침: 사용자가 수집된 기사에 대해 물어보면 위 목록을 참고하여 신뢰성 높게 답변하세요."
                 )
+
+        if self.latest_weather_data and self.latest_weather_data.get("stadiums"):
+            w_list = [
+                f"- {s['name']}({s['team_short']}): {s['temp']}, 강수 {s['rain']}, 풍속 {s['wind_speed']}, 진행상태: {s['status_label']}"
+                for s in self.latest_weather_data["stadiums"]
+            ]
+            context_parts.append(
+                f"\n\n[실시간 KBO 구장별 기상정보 ({self.latest_weather_data.get('base_datetime', '')})]\n"
+                + "\n".join(w_list)
+                + "\n\n※ 지침: 사용자가 특정 야구장의 오늘 날씨나 우천 취소 여부, 경기 진행 가능성을 물어보면 위 실시간 기상청 관측 정보를 토대로 답변하세요."
+            )
 
         current_instructions = "\n".join(context_parts)
 
@@ -410,4 +426,16 @@ class BaseballBotAPI:
             return {"status": "error", "message": "유효하지 않은 URL입니다."}
         except Exception as e:
             return {"status": "error", "message": f"링크 열기 실패: {str(e)}"}
+
+    # ============================================================
+    # 7. KBO 전국 구장 실시간 기상정보 조회 (기상청 단기예보 API 연동)
+    # ============================================================
+    def get_stadiums_weather(self) -> dict:
+        """
+        KBO 전국 11개 구장(정규 9개 + 제2구장 2개: 포항, 울산 문수)의 실시간 기상정보 및 우천 취소 가능성 지수를 조회합니다.
+        """
+        res = get_all_stadiums_weather()
+        if res.get("status") == "success":
+            self.latest_weather_data = res
+        return res
 
