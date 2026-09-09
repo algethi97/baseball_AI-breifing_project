@@ -136,12 +136,12 @@ STADIUMS = [
     {
         "id": "ulsan",
         "name": "울산문수야구장 (제2구장)",
-        "teams": ["롯데 자이언츠"],
-        "team_short": "롯데 (제2구장)",
+        "teams": ["롯데 자이언츠", "울산 웨일즈"],
+        "team_short": "롯데 / 울산",
         "city": "울산 남구",
         "nx": 101,
         "ny": 84,
-        "color": "#002955",
+        "color": "linear-gradient(90deg, #002955 50%, #c70000 50%)",
         "is_dome": False,
         "is_secondary": True,
     },
@@ -167,7 +167,7 @@ def evaluate_game_condition(pty: int, rn1: float, wsd: float, is_dome: bool) -> 
     반환값: (상태 레이블, 상태 뱃지 클래스, 상태 설명)
     """
     if is_dome:
-        return "🛡️ 돔구장 (기상 무관)", "badge-dome", "실내 돔구장으로 날씨와 상관없이 100% 정상 진행됩니다."
+        return "🔵 돔구장", "badge-dome", "실내 돔구장으로 날씨와 상관없이 100% 정상 진행됩니다."
 
     # 강수 형태: 0 없음, 1 비, 2 비/눈, 3 눈, 5 빗방울, 6 빗방울눈날림, 7 눈날림
     if pty == 0:
