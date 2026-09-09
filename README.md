@@ -164,3 +164,4 @@ uv run python src/mini_project_0909/app.py
 ## 📄 라이선스 (License)
 
 This project is licensed under the MIT License.
+
