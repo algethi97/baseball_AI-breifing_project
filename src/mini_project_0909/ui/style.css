@@ -137,6 +137,66 @@
             flex-direction: column;
         }
 
+        /* 챗봇 상단 기사/보고서 실시간 연동 상태 바 */
+        .chat-context-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: #ffffff;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+            z-index: 5;
+        }
+
+        .context-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        .context-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #94a3b8;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .context-dot.active-articles {
+            background: #3b82f6;
+            box-shadow: 0 0 6px rgba(59, 130, 246, 0.7);
+        }
+
+        .context-dot.active-report {
+            background: #10b981;
+            box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+        }
+
+        .context-text {
+            color: var(--text-dark);
+        }
+
+        .context-action-btn {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .context-action-btn:hover {
+            background: #e2e8f0;
+            color: var(--primary);
+        }
+
         .chat-messages {
             flex: 1;
             padding: 24px;

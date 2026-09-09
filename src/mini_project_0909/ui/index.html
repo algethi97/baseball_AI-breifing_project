@@ -35,6 +35,15 @@
              ======================================================= -->
         <section class="tab-panel active" id="panel-chat">
             <div class="chat-container">
+                <!-- 기사 수집 & 요약 보고서 실시간 연동 상태 바 -->
+                <div class="chat-context-bar" id="chatContextBar">
+                    <div class="context-indicator">
+                        <span class="context-dot" id="contextDot"></span>
+                        <span class="context-text" id="contextText">연동 상태: 일반 야구 지식 모드 (수집 데이터 없음)</span>
+                    </div>
+                    <button class="context-action-btn" id="btnContextAction" onclick="switchTab('research')">📰 기사 수집하기</button>
+                </div>
+
                 <div class="chat-messages" id="chatMessages">
                     <div class="message-row bot">
                         <div class="avatar bot">⚾</div>
@@ -42,7 +51,7 @@
                             <div class="bubble">
                                 안녕하세요! <strong>야구 브리핑 AI</strong>입니다. ⚾<br><br>
                                 OpenAI API와 연결되어 실시간 질의응답이 가능합니다.<br>
-                                특정 기사 수집이나 요약 보고서가 필요하시면 상단의 <strong>[📰 기사 수집 & 요약 보고서]</strong> 탭을 이용해보세요!
+                                특정 기사 수집이나 요약 보고서가 필요하시면 상단의 <strong>[📰 기사 수집 & 요약 보고서]</strong> 탭을 이용해보시거나, 수집된 기사 및 요약 보고서에 대해 무엇이든 제게 질문해주세요!
                                 <span class="timestamp">시스템 안내</span>
                             </div>
                         </div>
@@ -58,7 +67,7 @@
                     </div>
                 </div>
 
-                <div class="quick-actions">
+                <div class="quick-actions" id="quickActions">
                     <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 탭으로 이동</button>
                     <button class="quick-btn" onclick="sendQuickMessage('최근 KBO 리그 주요 관전 포인트 알려줘')">⚾ 주요 관전 포인트</button>
                     <button class="quick-btn" onclick="sendQuickMessage('야구 기사 스크랩 및 요약 보고서 활용 팁 알려줘')">💡 보고서 활용 팁</button>
@@ -158,6 +167,9 @@
                             </button>
                             <button class="btn btn-outline" id="btnSaveReportMd" onclick="handleSaveReportMd()">
                                 <span>📄</span> 보고서 저장 (.md)
+                            </button>
+                            <button class="btn btn-secondary" id="btnAskBotAboutReport" onclick="handleAskBotAboutReport()" style="display:none;">
+                                <span>💬</span> 챗봇에 질문하기
                             </button>
                         </div>
                     </div>
