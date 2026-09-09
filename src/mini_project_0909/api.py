@@ -175,7 +175,7 @@ class BaseballBotAPI:
     # ============================================================
     # 4. 기간별 기사 요약 보고서 작성 (OpenAI API 연동)
     # ============================================================
-    def generate_report(self, start_date: str, end_date: str) -> dict:
+    def generate_report(self, start_date: str, end_date: str, keyword: str = "") -> dict:
         """
         수집된 기사 중 해당 기간의 기사만 필터링하고 본문을 추출하여 AI 종합 분석 보고서를 작성합니다.
         """
@@ -271,10 +271,37 @@ class BaseballBotAPI:
                 report_md = response.output_text.strip()
 
             self.current_report = report_md
+
+            # [기능 추가] '보고서 작성' 시 자동으로 .md 보고서 파일 저장
+            target_keyword = keyword.strip() or self.current_keyword or "야구"
+            safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구"
+            extract_date = datetime.now().strftime("%y%m%d")
+            extract_time = datetime.now().strftime("%H%M%S")
+
+            base_filename = f"{safe_keyword}_보고서_{extract_date}.md"
+            save_path = Path.cwd() / base_filename
+            if save_path.exists():
+                filename = f"{safe_keyword}_보고서_{extract_date}_{extract_time}.md"
+                save_path = Path.cwd() / filename
+            else:
+                filename = base_filename
+
+            saved_file = ""
+            try:
+                with open(save_path, "w", encoding="utf-8") as f:
+                    f.write(report_md)
+                saved_file = filename
+            except Exception as save_err:
+                print(f"보고서 파일 자동 저장 실패: {save_err}")
+
             return {
                 "status": "success",
                 "report_md": report_md,
                 "count": total_count,
+                "saved_file": saved_file,
+                "message": f"보고서가 성공적으로 작성되었으며, '{saved_file}' 파일로 자동 저장되었습니다!"
+                if saved_file
+                else "보고서 작성이 완료되었습니다.",
             }
 
         except Exception as e:
@@ -286,9 +313,9 @@ class BaseballBotAPI:
     # ============================================================
     # 5. 마크다운 보고서 파일 (.md) 저장
     # ============================================================
-    def save_report_md(self, filename: str = "") -> dict:
+    def save_report_md(self, keyword: str = "", filename: str = "") -> dict:
         """
-        생성된 마크다운 보고서를 .md 파일로 저장합니다.
+        생성된 마크다운 보고서를 .md 파일로 저장합니다. (키워드_보고서_추출날짜.md 양식)
         """
         if not self.current_report:
             return {
@@ -297,10 +324,20 @@ class BaseballBotAPI:
             }
 
         if not filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"baseball_report_{timestamp}.md"
+            target_keyword = keyword.strip() or self.current_keyword or "야구"
+            safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구"
+            extract_date = datetime.now().strftime("%y%m%d")
+            extract_time = datetime.now().strftime("%H%M%S")
 
-        save_path = Path.cwd() / filename
+            base_filename = f"{safe_keyword}_보고서_{extract_date}.md"
+            save_path = Path.cwd() / base_filename
+            if save_path.exists():
+                filename = f"{safe_keyword}_보고서_{extract_date}_{extract_time}.md"
+                save_path = Path.cwd() / filename
+            else:
+                filename = base_filename
+        else:
+            save_path = Path.cwd() / filename
 
         try:
             with open(save_path, "w", encoding="utf-8") as f:
@@ -308,8 +345,9 @@ class BaseballBotAPI:
 
             return {
                 "status": "success",
-                "message": f"보고서 파일이 성공적으로 저장되었습니다!\n저장 경로: {save_path.name}",
-                "filename": str(save_path),
+                "message": f"보고서 파일이 성공적으로 저장되었습니다!\n파일명: {filename}",
+                "filename": filename,
+                "path": str(save_path),
             }
         except Exception as e:
             return {
