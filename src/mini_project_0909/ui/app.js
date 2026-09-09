@@ -279,6 +279,7 @@
 
             const startDate = document.getElementById('reportStartDate').value;
             const endDate = document.getElementById('reportEndDate').value;
+            const keyword = document.getElementById('crawlKeyword').value.trim();
 
             const btn = document.getElementById('btnGenerateReport');
             const statusBadge = document.getElementById('reportStatusBadge');
@@ -298,7 +299,7 @@
 
             try {
                 if (window.pywebview && window.pywebview.api) {
-                    const res = await window.pywebview.api.generate_report(startDate, endDate);
+                    const res = await window.pywebview.api.generate_report(startDate, endDate, keyword);
                     btn.disabled = false;
                     btn.innerHTML = '<span>⚡</span> 보고서 작성';
                     statusBadge.innerText = '작성 완료';
@@ -306,7 +307,11 @@
                     if (res && res.status === 'success') {
                         currentReportText = res.report_md;
                         renderReport(currentReportText);
-                        showToast('AI 요약 보고서 작성이 완료되었습니다!', '✅');
+                        if (res.saved_file) {
+                            showToast(`보고서 작성 & 파일 저장 완료! (${res.saved_file})`, '📄');
+                        } else {
+                            showToast('AI 요약 보고서 작성이 완료되었습니다!', '✅');
+                        }
                     } else {
                         showToast(res.message || '보고서 생성 실패', '❌');
                     }
@@ -317,7 +322,8 @@
                         statusBadge.innerText = '작성 완료';
                         currentReportText = `# ⚾ KBO 야구 뉴스 AI 브리핑 보고서\n\n**분석 기간**: ${startDate} ~ ${endDate}\n\n## 1. 핵심 3줄 요약\n- 수집된 기사를 기반으로 경기 및 선수단 주요 이슈 분석 완료\n- 선발 마운드와 클러치 타선의 활약이 주요 화두로 부상\n- 순위 다툼이 치열해짐에 따라 경기별 불펜 운용이 승패 좌우\n\n## 2. 세부 이슈 및 시사점\n- 주요 선수들의 부상 복귀와 엔트리 변동 체크 필요\n- 향후 잔여 경기 일정에 따른 맞춤형 전략 수립 전망`;
                         renderReport(currentReportText);
-                        showToast('보고서 작성 완료 (테스트)', '✅');
+                        const today = new Date().toISOString().split('T')[0].slice(2).replace(/-/g, '');
+                        showToast(`[테스트] 보고서 작성 및 ${keyword || '야구'}_보고서_${today}.md 저장 완료`, '📄');
                     }, 1000);
                 }
             } catch (err) {
@@ -361,16 +367,19 @@
                 return;
             }
 
+            const keyword = document.getElementById('crawlKeyword').value.trim();
+
             try {
                 if (window.pywebview && window.pywebview.api) {
-                    const res = await window.pywebview.api.save_report_md();
+                    const res = await window.pywebview.api.save_report_md(keyword);
                     if (res && res.status === 'success') {
                         showToast(res.message || '보고서가 .md 파일로 저장되었습니다!', '📄');
                     } else {
                         showToast(res.message || '보고서 저장 실패', '❌');
                     }
                 } else {
-                    showToast('보고서 .md 저장이 요청되었습니다. (테스트)', '📄');
+                    const today = new Date().toISOString().split('T')[0].slice(2).replace(/-/g, '');
+                    showToast(`[테스트] ${keyword || '야구'}_보고서_${today}.md 저장 완료`, '📄');
                 }
             } catch (err) {
                 showToast(`저장 오류: ${err.message || err}`, '❌');
