@@ -90,7 +90,7 @@
                             <span>🔍</span>
                             <span>야구 기사 수집</span>
                         </div>
-                        <span class="panel-badge" id="articleCountBadge">수집된 기사: 0건</span>
+                        <span class="panel-badge" id="articleCountBadge">수집된 기사: 0건 (최대 200건)</span>
                     </div>
 
                     <div class="panel-controls">
@@ -106,11 +106,14 @@
                                 <span style="color:var(--text-muted);">~</span>
                                 <input type="date" id="crawlEndDate" class="form-input" style="flex:1;">
                             </div>
+                            <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;">
+                                ℹ️ 설정한 기간 내의 순수 야구 기사를 일자별로 최대 200건까지 균등 수집합니다.
+                            </div>
                         </div>
 
                         <div class="btn-group">
                             <button class="btn btn-primary" id="btnCrawl" onclick="handleCrawlArticles()">
-                                <span>📥</span> 기사 수집
+                                <span>📥</span> 기사 수집 (최대 200건)
                             </button>
                             <button class="btn btn-secondary" id="btnExportCsv" onclick="handleExportCsv()">
                                 <span>💾</span> 데이터 CSV 추출

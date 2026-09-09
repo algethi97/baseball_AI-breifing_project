@@ -147,12 +147,12 @@
                 if (window.pywebview && window.pywebview.api) {
                     const res = await window.pywebview.api.fetch_articles(keyword, startDate, endDate);
                     btn.disabled = false;
-                    btn.innerHTML = '<span>📥</span> 기사 수집';
+                    btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
 
                     if (res && res.status === 'success') {
                         currentArticles = res.articles || [];
                         renderArticles(currentArticles);
-                        showToast(`${currentArticles.length}건의 기사를 수집했습니다!`, '✅');
+                        showToast(`${currentArticles.length}건의 기사를 수집했습니다! (최대 200건)`, '✅');
                     } else {
                         showToast(res.message || '기사 수집에 실패했습니다.', '❌');
                     }
@@ -160,7 +160,7 @@
                     // 브라우저 단독 테스트용 더미
                     setTimeout(() => {
                         btn.disabled = false;
-                        btn.innerHTML = '<span>📥</span> 기사 수집';
+                        btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
                         currentArticles = [
                             { id: 1, title: `[KBO] '${keyword}' 가을야구 향한 총력전 돌입`, press: '스포츠조선', date: endDate, url: 'https://sports.news.naver.com/kbaseball/', snippet: '선수단 전원이 결집하여 후반기 순위 싸움에 박차를 가하고 있다.' },
                             { id: 2, title: `전문가 분석: 이번 주 '${keyword}' 핵심 관전 포인트는?`, press: 'OSEN', date: startDate, url: 'https://sports.news.naver.com/kbaseball/', snippet: '선발 투수진의 안정세와 중심 타선의 득점권 타율이 승패를 가를 전망이다.' }
@@ -171,15 +171,28 @@
                 }
             } catch (err) {
                 btn.disabled = false;
-                btn.innerHTML = '<span>📥</span> 기사 수집';
+                btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
                 showToast(`에러: ${err.message || err}`, '❌');
+            }
+        }
+
+        function openExternalLink(url) {
+            if (!url || url === '#') return;
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.open_external_link) {
+                    window.pywebview.api.open_external_link(url);
+                } else {
+                    window.open(url, '_blank');
+                }
+            } catch (e) {
+                window.open(url, '_blank');
             }
         }
 
         function renderArticles(articles) {
             const container = document.getElementById('articleListContainer');
             const countBadge = document.getElementById('articleCountBadge');
-            countBadge.innerText = `수집된 기사: ${articles.length}건`;
+            countBadge.innerText = `수집된 기사: ${articles.length}건 (최대 200건)`;
 
             if (!articles || articles.length === 0) {
                 container.innerHTML = `
@@ -192,6 +205,7 @@
 
             let html = '';
             articles.forEach(art => {
+                const url = art.url || '#';
                 html += `
                     <div class="article-card">
                         <div class="article-card-header">
@@ -201,7 +215,7 @@
                                 <span>📅 ${art.date || ''}</span>
                             </div>
                         </div>
-                        <a href="${art.url || '#'}" target="_blank" class="article-title">${art.title}</a>
+                        <a href="${url}" target="_blank" onclick="event.preventDefault(); openExternalLink('${url}');" class="article-title">${art.title}</a>
                         <p class="article-snippet">${art.snippet || ''}</p>
                     </div>`;
             });
@@ -296,16 +310,28 @@
         function renderReport(mdText) {
             const container = document.getElementById('reportOutputContainer');
             
-            // 기본적인 Markdown 변환 (헤더, 볼드, 불릿 등)
+            // 구조화된 Markdown 변환 (헤더, 볼드, 불릿, 번호, 인용, 줄바꿈)
             let html = mdText
-                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^# (.*$)/gim, '<h1 class="report-h1">$1</h1>')
+                .replace(/^## (.*$)/gim, '<h2 class="report-h2">$1</h2>')
+                .replace(/^### (.*$)/gim, '<h3 class="report-h3">$1</h3>')
+                .replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/gim, '<a href="$2" target="_blank" class="report-link" onclick="event.preventDefault(); openExternalLink(\'$2\');" title="$2">$1 ↗</a>')
                 .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-                .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                .replace(/^---$/gim, '<hr class="report-hr">')
+                .replace(/^> (.*$)/gim, '<blockquote class="report-quote">$1</blockquote>')
+                .replace(/^\- (.*$)/gim, '<li class="report-item">$1</li>')
+                .replace(/^\* (.*$)/gim, '<li class="report-item">$1</li>')
+                .replace(/^(\d+)\. (.*$)/gim, '<li class="report-item-num"><span class="num-badge">$1.</span> <span>$2</span></li>')
                 .replace(/\n/gim, '<br>');
 
-            container.innerHTML = `<div class="report-preview">${html}</div>`;
+            container.innerHTML = `
+                <div class="report-preview">
+                    <div class="report-header-banner">
+                        <span>📊</span>
+                        <span>AI 야구 뉴스 심층 분석 리포트 생성이 완료되었습니다.</span>
+                    </div>
+                    <div class="report-content-body">${html}</div>
+                </div>`;
         }
 
         async function handleSaveReportMd() {
