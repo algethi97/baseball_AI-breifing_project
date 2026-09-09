@@ -4,6 +4,7 @@
 
 import os
 import re
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
@@ -83,10 +84,11 @@ class BaseballBotAPI:
     # 2. 기사 수집 인터페이스 (sports.news.naver.com 실시간 크롤링)
     # ============================================================
     def fetch_articles(
-        self, keyword: str, start_date: str, end_date: str
+        self, keyword: str, start_date: str, end_date: str, max_results: int = 200
     ) -> dict:
         """
         'sports.news.naver.com' 도메인 내에서 키워드와 기간에 부합하는 야구 기사를 실시간 크롤링합니다.
+        (최대 max_results건, 기본 200건)
         """
         keyword = keyword.strip()
         if not keyword:
@@ -97,7 +99,7 @@ class BaseballBotAPI:
             keyword=keyword,
             start_date=start_date,
             end_date=end_date,
-            max_results=20,
+            max_results=max_results,
         )
 
         # 기간 조건으로 결과가 없을 경우 (포털 검색 인덱스 한계 대비 최신순 fallback)
@@ -106,7 +108,7 @@ class BaseballBotAPI:
                 keyword=keyword,
                 start_date="",
                 end_date="",
-                max_results=15,
+                max_results=min(max_results, 50),
             )
 
         if not articles:
@@ -201,6 +203,7 @@ class BaseballBotAPI:
             body_summary = full_text[:400] if full_text else a["snippet"]
             articles_detail_list.append(
                 f"[{i+1}] 언론사: {a['press']} | 날짜: {a['date']} | 제목: {a['title']}\n"
+                f"원문 URL: {a['url']}\n"
                 f"내용 발췌: {body_summary}\n"
             )
 
@@ -208,13 +211,17 @@ class BaseballBotAPI:
 
         instructions = (
             "당신은 전문 야구 분석가이자 스포츠 칼럼니스트입니다.\n"
-            "네이버 스포츠(sports.news.naver.com)에서 수집된 실제 기사들을 바탕으로, 야구 팬과 코치진을 위한 전문적인 '야구 뉴스 요약 및 브리핑 보고서'를 마크다운으로 작성해주세요.\n"
-            "반드시 아래 항목을 명확히 포함하세요:\n"
+            "네이버 스포츠(sports.news.naver.com)에서 수집된 실제 기사들을 바탕으로, 야구 팬과 코치진을 위한 전문적인 '야구 뉴스 요약 및 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
+            "[작성 형식 및 필수 규칙]\n"
             "1. # ⚾ 야구 뉴스 종합 브리핑 보고서 (제목 및 대상 기간)\n"
             "2. ## 1. 핵심 3줄 요약 (가장 중요한 흐름 및 이슈 3가지)\n"
-            "3. ## 2. 구단 및 선수단 주요 이슈 분석 (투타 흐름, 선수 성적, 인터뷰 포인트)\n"
+            "3. ## 2. 구단 및 선수단 주요 이슈 분석 (투타 흐름, 선수 성적, 활약상, 인터뷰 포인트)\n"
+            "   - **필수 규칙 1 (경기/기사 날짜 명시)**: 선수의 활약상이나 경기 결과를 서술할 때, 반드시 해당 경기 또는 기사의 날짜(예: '9월 8일 경기에서...', '9월 7일 기사에 따르면...')를 문장 내에 명확히 명시하세요.\n"
+            "   - **필수 규칙 2 (기사 원문 링크 첨부)**: 각 활약상이나 핵심 이슈 문장 끝에 반드시 해당 기사의 실제 원문 링크를 `[언론사명 기사 보기](기사URL)` 형식의 마크다운 하이퍼링크로 첨부하세요.\n"
             "4. ## 3. 전문가 총평 및 향후 전망\n"
-            "5. ## 4. 참고 기사 출처 (언론사 및 제목 리스트)"
+            "5. ## 4. 참고 기사 출처 및 원문 링크\n"
+            "   - 수집된 기사들을 `- [언론사] 기사 제목: [기사 원문 보기](기사URL) (발행일: 날짜)` 형식으로 빠짐없이 정리하세요.\n\n"
+            "※ 주의: URL은 반드시 위에 제공된 실제 네이버 스포츠 기사의 '원문 URL'만을 정확하게 사용해야 하며, 절대 임의로 조작하거나 존재하지 않는 가상의 URL을 생성하지 마세요."
         )
 
         user_input = (
@@ -230,9 +237,12 @@ class BaseballBotAPI:
                     f"**분석 기간**: {start_date} ~ {end_date} (총 {len(filtered)}건 분석)\n\n"
                     f"## 1. 핵심 3줄 요약\n"
                     f"- 네이버 스포츠 기사 {len(filtered)}건을 바탕으로 분석을 완료했습니다.\n"
-                    f"- 경기 주요 포인트 및 선수단 컨디션 지표 확인 완료.\n\n"
-                    f"## 2. 참고 기사\n"
-                    + "\n".join([f"- [{a['press']}] {a['title']}" for a in filtered])
+                    f"- 경기 주요 포인트 및 선수단 컨디션 지표 확인 완료.\n"
+                    f"- 세부 활약상 및 경기 일정에 따른 맞춤형 리포트 제공.\n\n"
+                    f"## 2. 구단 및 선수단 주요 이슈 분석\n"
+                    + "\n".join([f"- **[{a['date']} 경기/기사]** {a['title']} — [{a['press']} 기사 보기]({a['url']})" for a in filtered[:5]]) + "\n\n"
+                    f"## 3. 참고 기사 출처 및 원문 링크\n"
+                    + "\n".join([f"- [{a['press']}] {a['title']}: [기사 원문 보기]({a['url']}) (발행일: {a['date']})" for a in filtered])
                 )
             else:
                 response = self.client.responses.create(
@@ -288,3 +298,19 @@ class BaseballBotAPI:
                 "status": "error",
                 "message": f"보고서 저장 중 오류가 발생했습니다: {str(e)}",
             }
+
+    # ============================================================
+    # 6. 외부 브라우저 링크 열기
+    # ============================================================
+    def open_external_link(self, url: str) -> dict:
+        """
+        시스템 기본 브라우저(Edge, Chrome 등)로 외부 웹 링크를 엽니다.
+        """
+        try:
+            if url and url.startswith(("http://", "https://")):
+                webbrowser.open(url)
+                return {"status": "success", "url": url}
+            return {"status": "error", "message": "유효하지 않은 URL입니다."}
+        except Exception as e:
+            return {"status": "error", "message": f"링크 열기 실패: {str(e)}"}
+
