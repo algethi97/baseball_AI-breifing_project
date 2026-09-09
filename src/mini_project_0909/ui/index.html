@@ -25,6 +25,9 @@
             <button class="tab-btn" onclick="switchTab('research')" id="tabBtn-research">
                 <span>📰</span> 기사 수집 & 요약 보고서
             </button>
+            <button class="tab-btn" onclick="switchTab('weather')" id="tabBtn-weather">
+                <span>☀️</span> 구장별 실시간 날씨
+            </button>
         </nav>
     </header>
 
@@ -185,6 +188,44 @@
                     </div>
                 </div>
 
+            </div>
+        </section>
+
+        <!-- =======================================================
+             TAB 3: 구장별 실시간 날씨 (기상청 단기예보 API 연동)
+             ======================================================= -->
+        <section class="tab-panel" id="panel-weather">
+            <div class="weather-dashboard-container">
+                <div class="weather-dashboard-header">
+                    <div class="weather-header-left">
+                        <div class="weather-title">
+                            <span>☀️</span>
+                            <span>KBO 전국 구장 실시간 기상정보</span>
+                        </div>
+                        <span class="weather-time-badge" id="weatherTimeBadge">기상청 발표 기준</span>
+                    </div>
+
+                    <div class="weather-header-actions">
+                        <div class="weather-filter-group">
+                            <button class="filter-btn active" id="filterBtn-all" onclick="filterStadiums('all')">전체 구장 (11)</button>
+                            <button class="filter-btn" id="filterBtn-main" onclick="filterStadiums('main')">정규 구장 (9)</button>
+                            <button class="filter-btn" id="filterBtn-secondary" onclick="filterStadiums('secondary')">제2구장 (2)</button>
+                        </div>
+                        <button class="btn btn-primary" id="btnRefreshWeather" onclick="loadStadiumWeather(true)">
+                            <span>🔄</span> 날씨 새로고침
+                        </button>
+                    </div>
+                </div>
+
+                <div class="weather-dashboard-body">
+                    <div class="stadium-weather-grid" id="stadiumWeatherGrid">
+                        <!-- 동적으로 11개 구장 날씨 카드 렌더링 -->
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">⏳</div>
+                            <div class="empty-state-text">기상청에서 전국 11개 야구장 실시간 날씨 데이터를 불러오고 있습니다...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
