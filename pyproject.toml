@@ -1,0 +1,26 @@
+[project]
+name = "mini-project-0909"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Algethi", email = "algethi97@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "ipykernel>=7.3.0",
+    "openai>=3.10.0",
+    "pandas>=3.0.5",
+    "python-dotenv>=1.2.3",
+    "pywebview>=6.2.1",
+    "requests>=2.34.2",
+    "selenium>=4.48.0",
+]
+
+[project.scripts]
+mini-project-0909 = "mini_project_0909:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
