@@ -578,6 +578,15 @@ HTML_CODE = """<!DOCTYPE html>
             color: var(--text-muted);
         }
 
+        .category-badge {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.72rem;
+        }
+
         .press-badge {
             background: #e2e8f0;
             padding: 2px 6px;
@@ -1037,6 +1046,7 @@ HTML_CODE = """<!DOCTYPE html>
                     <div class="article-card">
                         <div class="article-card-header">
                             <div class="article-meta">
+                                <span class="category-badge">${art.category || '국내야구'}</span>
                                 <span class="press-badge">${art.press || '언론사'}</span>
                                 <span>📅 ${art.date || ''}</span>
                             </div>
