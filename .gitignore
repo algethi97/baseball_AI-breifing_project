@@ -17,3 +17,8 @@ __pycache__/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Data files
+*.csv
+baseball_report_*.md
+*_보고서_*.md
