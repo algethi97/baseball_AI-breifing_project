@@ -214,16 +214,19 @@
                 return;
             }
 
+            const keyword = document.getElementById('crawlKeyword').value.trim();
+
             try {
                 if (window.pywebview && window.pywebview.api) {
-                    const res = await window.pywebview.api.export_articles_csv();
+                    const res = await window.pywebview.api.export_articles_csv(keyword);
                     if (res && res.status === 'success') {
                         showToast(res.message || 'CSV 파일이 성공적으로 저장되었습니다!', '💾');
                     } else {
                         showToast(res.message || 'CSV 저장 실패', '❌');
                     }
                 } else {
-                    showToast('CSV 추출이 요청되었습니다. (테스트)', '💾');
+                    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+                    showToast(`[테스트 모드] ${keyword || '야구'}_기사수집_${today}.csv 추출 완료`, '💾');
                 }
             } catch (err) {
                 showToast(`저장 오류: ${err.message || err}`, '❌');

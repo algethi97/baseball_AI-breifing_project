@@ -3,6 +3,7 @@
 """
 
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
@@ -39,6 +40,7 @@ class BaseballBotAPI:
 
         # 수집된 기사 및 최근 작성된 보고서 저장소
         self.collected_articles = []
+        self.current_keyword = ""
         self.current_report = ""
 
     # ============================================================
@@ -116,6 +118,7 @@ class BaseballBotAPI:
             }
 
         self.collected_articles = articles
+        self.current_keyword = keyword
         return {
             "status": "success",
             "count": len(articles),
@@ -125,33 +128,41 @@ class BaseballBotAPI:
     # ============================================================
     # 3. 수집 데이터 CSV 추출
     # ============================================================
-    def export_articles_csv(self, filename: str = "") -> dict:
+    def export_articles_csv(self, keyword: str = "") -> dict:
         """
         수집된 기사 데이터를 CSV 파일로 추출하여 저장합니다.
-        (컬럼 변경 정책 준수: 원본 기사 속성 그대로 보존)
+        추출 파일명 형식: {키워드}_기사수집_{추출날짜}_{시간}.csv
+        (DataFrame 컬럼 변경 정책 준수: 원본 기사 속성 그대로 보존)
         """
         if not self.collected_articles:
             return {
                 "status": "error",
-                "message": "수집된 기사 데이터가 없습니다.",
+                "message": "수집된 기사 데이터가 없습니다. 먼저 기사를 수집해주세요.",
             }
 
-        if not filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"baseball_articles_{timestamp}.csv"
+        # 키워드 결정 (파라미터 우선 -> 수집 시 저장된 키워드 -> 기본값)
+        target_keyword = keyword.strip() or self.current_keyword or "야구"
+        # 파일명에 사용할 수 없는 특수문자 및 공백 정제
+        safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구기사"
+
+        # 추출 날짜 및 시간 생성
+        extract_date = datetime.now().strftime("%y%m%d")
+        extract_time = datetime.now().strftime("%H%M%S")
+        filename = f"{safe_keyword}_기사수집_{extract_date}_{extract_time}.csv"
 
         save_path = Path.cwd() / filename
 
         try:
-            # 원본 컬럼 그대로 DataFrame 생성 (임의 컬럼 추가/삭제 금지 정책 준수)
+            # 원본 컬럼 그대로 DataFrame 생성 (임의 컬럼 추가/삭제 금지 정책 엄격 준수)
             df = pd.DataFrame(self.collected_articles)
             # Excel 등 Windows 환경에서 한글 깨짐 방지를 위해 utf-8-sig 사용
             df.to_csv(save_path, index=False, encoding="utf-8-sig")
 
             return {
                 "status": "success",
-                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n저장 경로: {save_path.name}",
-                "filename": str(save_path),
+                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n파일명: {filename}",
+                "filename": filename,
+                "path": str(save_path),
             }
         except Exception as e:
             return {
