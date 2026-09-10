@@ -13,6 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# 프로젝트 루트 및 기본 DB storage 디렉터리 (storage/db)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_EXPORT_DB_DIR = PROJECT_ROOT / "storage" / "db"
+
 
 # ============================================================
 # DDL: 설계안 B (관계형 정규화 테이블 스키마)
@@ -283,7 +287,7 @@ class DatabaseManager:
                 "message": "수집된 기사 데이터가 없습니다. 먼저 기사를 수집해주세요.",
             }
 
-        target_dir = output_dir or Path.cwd()
+        target_dir = output_dir or DEFAULT_EXPORT_DB_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
         target_keyword = keyword.strip() or "야구"
         safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구기사"
@@ -343,7 +347,7 @@ class DatabaseManager:
             "status": "success",
             "message": (
                 f"데이터베이스 추출 완료! (처리속도: {elapsed_ms:.2f}ms)\n"
-                f"- DB 파일: {db_filename} ({saved_count}건 저장)\n"
+                f"- DB 파일: storage/db/{db_filename} ({saved_count}건 저장)\n"
                 f"- 통합 DB(baseball_news.db) 동기화 완료"
             ),
             "db_filename": db_filename,

@@ -17,6 +17,16 @@ from mini_project_0909.database import DatabaseManager
 
 load_dotenv(override=True)
 
+# 프로젝트 루트 및 파일 형식별 storage 디렉터리 경로 정의
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+EXPORT_DIR = PROJECT_ROOT / "storage"
+CSV_EXPORT_DIR = EXPORT_DIR / "csv"
+DB_EXPORT_DIR = EXPORT_DIR / "db"
+MD_EXPORT_DIR = EXPORT_DIR / "report"
+
+for _dir in (CSV_EXPORT_DIR, DB_EXPORT_DIR, MD_EXPORT_DIR):
+    _dir.mkdir(parents=True, exist_ok=True)
+
 
 class BaseballBotAPI:
     """
@@ -210,7 +220,7 @@ class BaseballBotAPI:
         extract_time = datetime.now().strftime("%H%M%S")
         filename = f"{safe_keyword}_기사수집_{extract_date}_{extract_time}.csv"
 
-        save_path = Path.cwd() / filename
+        save_path = CSV_EXPORT_DIR / filename
 
         try:
             # 원본 컬럼 그대로 DataFrame 생성 (임의 컬럼 추가/삭제 금지 정책 엄격 준수)
@@ -220,7 +230,7 @@ class BaseballBotAPI:
 
             return {
                 "status": "success",
-                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n파일명: {filename}",
+                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n저장위치: storage/csv/{filename}",
                 "filename": filename,
                 "path": str(save_path),
             }
@@ -235,8 +245,8 @@ class BaseballBotAPI:
     # ============================================================
     def export_articles_db(self, keyword: str = "", start_date: str = "", end_date: str = "") -> dict:
         """
-        수집된 기사 데이터를 설계안 B(정규화 관계형 모델) 기반 SQLite DB 및
-        초고속 SQL CLI 배치 스크립트로 추출합니다.
+        수집된 기사 데이터를 설계안 B(정규화 관계형 모델) 기반 SQLite DB로 추출합니다.
+        (exported/db 디렉터리에 .db 파일 및 부속 저널 파일 함께 보관)
         """
         if not self.collected_articles:
             return {
@@ -251,6 +261,7 @@ class BaseballBotAPI:
                 start_date=start_date,
                 end_date=end_date,
                 articles=self.collected_articles,
+                output_dir=DB_EXPORT_DIR,
             )
             return res
         except Exception as e:
@@ -359,36 +370,11 @@ class BaseballBotAPI:
 
             self.current_report = report_md
 
-            # [기능 추가] '보고서 작성' 시 자동으로 .md 보고서 파일 저장
-            target_keyword = keyword.strip() or self.current_keyword or "야구"
-            safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구"
-            extract_date = datetime.now().strftime("%y%m%d")
-            extract_time = datetime.now().strftime("%H%M%S")
-
-            base_filename = f"{safe_keyword}_보고서_{extract_date}.md"
-            save_path = Path.cwd() / base_filename
-            if save_path.exists():
-                filename = f"{safe_keyword}_보고서_{extract_date}_{extract_time}.md"
-                save_path = Path.cwd() / filename
-            else:
-                filename = base_filename
-
-            saved_file = ""
-            try:
-                with open(save_path, "w", encoding="utf-8") as f:
-                    f.write(report_md)
-                saved_file = filename
-            except Exception as save_err:
-                print(f"보고서 파일 자동 저장 실패: {save_err}")
-
             return {
                 "status": "success",
                 "report_md": report_md,
                 "count": total_count,
-                "saved_file": saved_file,
-                "message": f"보고서가 성공적으로 작성되었으며, '{saved_file}' 파일로 자동 저장되었습니다!"
-                if saved_file
-                else "보고서 작성이 완료되었습니다.",
+                "message": "보고서 작성이 완료되었습니다.",
             }
 
         except Exception as e:
@@ -417,14 +403,14 @@ class BaseballBotAPI:
             extract_time = datetime.now().strftime("%H%M%S")
 
             base_filename = f"{safe_keyword}_보고서_{extract_date}.md"
-            save_path = Path.cwd() / base_filename
+            save_path = MD_EXPORT_DIR / base_filename
             if save_path.exists():
                 filename = f"{safe_keyword}_보고서_{extract_date}_{extract_time}.md"
-                save_path = Path.cwd() / filename
+                save_path = MD_EXPORT_DIR / filename
             else:
                 filename = base_filename
         else:
-            save_path = Path.cwd() / filename
+            save_path = MD_EXPORT_DIR / filename
 
         try:
             with open(save_path, "w", encoding="utf-8") as f:
@@ -432,7 +418,7 @@ class BaseballBotAPI:
 
             return {
                 "status": "success",
-                "message": f"보고서 파일이 성공적으로 저장되었습니다!\n파일명: {filename}",
+                "message": f"보고서 파일이 성공적으로 저장되었습니다!\n저장위치: storage/report/{filename}",
                 "filename": filename,
                 "path": str(save_path),
             }
