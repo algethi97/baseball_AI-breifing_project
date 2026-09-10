@@ -311,72 +311,107 @@ class BaseballBotAPI:
             filtered = self.collected_articles
 
         total_count = len(filtered)
+        target_keyword = keyword.strip() or self.current_keyword or "야구"
+
         # 날짜순 정렬
         sorted_articles = sorted(filtered, key=lambda x: x.get("date", ""), reverse=False)
 
-        # 1. 일자별 대표 기사 원문 상세 발췌 (수집된 원문 content 활용, 각 일자별 최대 8건에 대해 500자씩 발췌)
+        # 1. 키워드 연관도(Relevance Score) 계산 및 핵심 기사 우선 발췌
+        def get_relevance_score(art: dict) -> int:
+            t = art.get("title", "")
+            c = art.get("content", "") or art.get("snippet", "")
+            score = 0
+            if target_keyword:
+                score += t.count(target_keyword) * 15
+                score += c.count(target_keyword) * 3
+            return score
+
+        # 연관도 높은 순으로 정렬한 기사 목록 (발췌용)
+        relevance_sorted = sorted(sorted_articles, key=get_relevance_score, reverse=True)
+
+        # 다양한 날짜를 포괄하면서 키워드 연관도가 높은 핵심 기사 최대 8건 발췌
         seen_dates = set()
         representative_details = []
-        for a in sorted_articles:
+        for a in relevance_sorted:
             d = a.get("date", "")
-            if d not in seen_dates and len(representative_details) < 8:
+            if len(representative_details) >= 8:
+                break
+            # 같은 날짜에서는 연관도 1위 기사 우선 선택
+            if d not in seen_dates or len(seen_dates) >= len(set(x.get("date", "") for x in sorted_articles)):
                 seen_dates.add(d)
                 full_text = a.get("content") or fetch_article_content(a["url"])
                 if full_text:
+                    score = get_relevance_score(a)
                     representative_details.append(
-                        f"■ [{d} 대표 기사 원문] 언론사: {a['press']} | 제목: {a['title']}\n"
-                        f"기사 원문 발췌:\n{full_text[:500]}\n"
+                        f"■ [{d} 핵심 기사] 언론사: {a['press']} | 제목: {a['title']} (키워드 연관도 점수: {score})\n"
+                        f"기사 본문 발췌:\n{full_text[:800]}\n"
                     )
 
-        rep_text = "\n".join(representative_details) if representative_details else "대표 본문 발췌 없음"
+        rep_text = "\n".join(representative_details) if representative_details else "핵심 본문 발췌 없음"
 
-        # 2. 수집된 전체 기사 목록 (원문 핵심 앞단 요약 포함하여 전수 분석 지원)
+        # 2. 수집된 전체 기사 목록 (원문 핵심 앞단 요약 포함)
         all_articles_list = []
         for i, a in enumerate(sorted_articles):
             content_text = a.get("content") or a.get("snippet", "")
             content_snippet = content_text[:120].replace("\n", " ").strip() if content_text else ""
-            content_str = f" | 원문 요약: {content_snippet}" if content_snippet else ""
+            content_str = f" | 본문 요약: {content_snippet}" if content_snippet else ""
             all_articles_list.append(
                 f"[{i+1}] 날짜: {a['date']} | 언론사: {a['press']} | 제목: {a['title']}{content_str}"
             )
         all_articles_text = "\n".join(all_articles_list)
 
         instructions = (
-            "당신은 프로야구(KBO) 전문 데이터 분석가이자 스포츠 칼럼니스트입니다.\n"
-            f"수집된 전체 야구 뉴스 기사(총 {total_count}건)를 빠짐없이 종합 분석하여, 야구 팬과 코치진을 위한 전문적이고 심층적인 '야구 뉴스 종합 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
-            "[작성 형식 및 필수 규칙]\n"
-            f"1. # ⚾ 야구 뉴스 종합 브리핑 보고서 (대상 기간: {start_date} ~ {end_date}, 총 {total_count}건 기사 분석)\n"
-            "2. ## 1. 핵심 3줄 요약 (기간 전체를 관통하는 가장 중요한 핵심 이슈 3가지)\n"
-            "3. ## 2. 구단 및 선수단 주요 경기 리뷰 & 활약상 분석\n"
-            "   - **필수 지침 1 (경기 날짜 명확 기재)**: 경기에 대한 리뷰(경기 결과, 승패, 득점, 투타 기록, 승부처)나 선수의 경기 활약상을 서술할 때는 반드시 해당 경기가 치러진 날짜(예: '9월 8일 경기에서는...', '9월 5일 경기에서 심우준 선수가...')를 문장에 명확하고 구체적으로 기재하세요.\n"
-            "   - **필수 지침 2 (기사 링크 제거)**: 문장이나 본문에 기사 URL 링크([기사 보기](...))를 첨부하지 마세요. 깔끔하고 전문적인 순수 텍스트 리포트 양식으로 가독성 높게 작성하세요.\n"
-            "4. ## 3. 부상/엔트리 변동 및 팀 전력 분석\n"
-            "5. ## 4. 전문가 총평 및 향후 경기 전망\n"
-            "6. ## 5. 주요 참고 기사 목록\n"
-            "   - 보고서 작성에 중요하게 활용된 대표 기사들을 `- [언론사] 기사 제목 (날짜)` 형식의 리스트로 정리하세요. (URL 링크는 넣지 마세요.)\n\n"
-            f"※ 중요: 특정 몇 개 기사에 치우치지 말고, 제공된 전체 기사 목록({total_count}건)의 시간 흐름과 전반적인 내용을 균형 있게 종합하여 완성도 높은 보고서를 작성하세요."
+            f"당신은 프로야구(KBO) 전문 데이터 분석가이자 스포츠 칼럼니스트입니다.\n"
+            f"사용자가 지정한 핵심 검색 키워드 **'{target_keyword}'**에 100% 집중하여, 해당 키워드와 직접 관련된 사건, 경기 활약상, 데이터, 이슈만을 엄격하게 심층 분석한 '키워드 맞춤 포커스 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
+            "[★ 가장 중요한 핵심 원칙: 키워드 초집중 (Strict Keyword Focus)]\n"
+            f"1. **주제 일탈 엄격 금지 (No Topic Drift)**: 보고서의 모든 단락, 문장, 분석의 핵심 주어(Subject)는 반드시 **'{target_keyword}'**여야 합니다.\n"
+            f"   - '{target_keyword}'와 직접적인 관련이 없는 타 구단의 경기 결과, 타 선수들의 활약, 리그 일반 순위 싸움 등 무관한 내용은 보고서에 일절 언급하지 마세요.\n"
+            f"   - 타 팀이나 상대 선수는 오직 '{target_keyword}'와의 직접적인 맞대결이나 승부처 맥락에서만 1줄 이내로 제한적으로 언급하세요.\n"
+            f"2. **키워드가 '선수'인 경우 (예: 김도영, 이로운, 류현진 등)**:\n"
+            f"   - 해당 선수의 일자별 출전/등판 경기, 투타 세부 기록(이닝, 탈삼진, 자책점, 투구수 / 타수, 안타, 홈런, 타점, 타율), 위기관리 및 클러치 활약, 투구/타격 폼, 팀 내 역할 및 최근 컨디션 페이스에 온전히 초점을 맞추세요.\n"
+            f"3. **키워드가 '구단'인 경우 (예: SSG 랜더스, KIA 타이거즈 등)**:\n"
+            f"   - 해당 구단의 기간 내 경기 승패, 선발/불펜 투수진 운용, 타선 득점권 집중력, 주요 수훈 선수, 엔트리/부상 변동, 팀 전략에 집중하세요.\n\n"
+            "[작성 양식 및 필수 목차]\n"
+            f"# ⚾ [{target_keyword}] AI 심층 분석 & 포커스 브리핑 리포트\n"
+            f"**분석 대상 기간**: {start_date} ~ {end_date} (관련 기사 총 {total_count}건 정밀 분석)\n\n"
+            f"## 1. [{target_keyword}] 핵심 이슈 & 활약상 3줄 요약\n"
+            f"- 기간 내 '{target_keyword}'와 관련된 가장 결정적이고 중요한 팩트/기록 3가지를 명확히 요약\n\n"
+            f"## 2. 일자별 경기 상세 리뷰 & 세부 데이터 분석\n"
+            f"   - **필수 지침 1 (경기 날짜 명확 기재)**: 경기에 대한 리뷰나 활약상을 서술할 때는 반드시 해당 경기가 치러진 날짜(예: '9월 9일 경기에서는...', '9월 5일 등판하여...')를 문장에 명확하고 구체적으로 기재하세요.\n"
+            f"   - **필수 지침 2 (기사 링크 제거)**: 문장이나 본문에 기사 URL 링크([기사 보기](...))를 첨부하지 마세요. 전문적인 순수 텍스트 리포트 양식으로 가독성 높게 작성하세요.\n\n"
+            f"## 3. [{target_keyword}] 최근 페이스, 전력 기여도 및 이슈 분석\n"
+            f"- 최근 컨디션 지표, 전술적 가치, 팀 내 핵심 역할 및 부상/엔트리 관련 이슈 정밀 분석\n\n"
+            f"## 4. 향후 전망 및 전문가 핵심 관전 포인트\n"
+            f"- 향후 일정에서의 과제, 잔여 경기 역할 및 관전 포인트 제시\n\n"
+            f"## 5. [{target_keyword}] 관련 주요 참고 기사 목록\n"
+            f"- 보고서 작성에 직접 활용된 '{target_keyword}' 관련 핵심 기사들을 `- [언론사] 기사 제목 (날짜)` 형식의 리스트로 정리하세요. (URL 링크는 넣지 마세요.)"
         )
 
         user_input = (
+            f"핵심 분석 키워드: '{target_keyword}'\n"
             f"분석 대상 기간: {start_date} ~ {end_date} (수집된 기사 총 {total_count}건)\n\n"
-            f"[일자별 주요 대표 기사 상세 발췌]\n{rep_text}\n\n"
+            f"[키워드 '{target_keyword}' 집중 대표 기사 상세 본문 발췌]\n{rep_text}\n\n"
             f"[수집된 전체 기사 목록 ({total_count}건)]\n{all_articles_text}\n\n"
-            f"위 수집된 전체 기사({total_count}건)를 종합 분석하여, 경기 날짜가 명확히 명시된 고품질 야구 종합 분석 보고서를 작성해주세요."
+            f"위 지침에 따라 키워드 '{target_keyword}'를 벗어나지 않고 해당 키워드 자체의 활약상, 기록, 이슈에 온전히 집중된 고품질 포커스 브리핑 보고서를 작성해주세요."
         )
 
         try:
             if not self.client:
                 report_md = (
-                    f"# ⚾ 야구 뉴스 종합 브리핑 보고서\n\n"
-                    f"**분석 기간**: {start_date} ~ {end_date} (총 {total_count}건 기사 종합 분석)\n\n"
-                    f"## 1. 핵심 3줄 요약\n"
-                    f"- 기간 내 네이버 스포츠 야구 기사 총 {total_count}건을 종합 분석했습니다.\n"
-                    f"- 주요 경기 결과 및 일자별 선수단 컨디션 지표 확인 완료.\n"
-                    f"- 세부 활약상 및 잔여 경기 일정에 따른 맞춤형 리포트 제공.\n\n"
-                    f"## 2. 구단 및 선수단 주요 경기 리뷰 & 활약상 분석\n"
-                    + "\n".join([f"- **[{a['date']} 경기]** {a['title']} ({a['press']})" for a in sorted_articles[:10]]) + "\n\n"
-                    f"## 3. 주요 참고 기사 목록\n"
-                    + "\n".join([f"- [{a['press']}] {a['title']} ({a['date']})" for a in sorted_articles[:15]])
+                    f"# ⚾ [{target_keyword}] AI 심층 분석 & 포커스 브리핑 리포트\n\n"
+                    f"**분석 대상 기간**: {start_date} ~ {end_date} (총 {total_count}건 기사 정밀 분석)\n\n"
+                    f"## 1. [{target_keyword}] 핵심 이슈 & 활약상 3줄 요약\n"
+                    f"- 기간 내 '{target_keyword}' 관련 기사 총 {total_count}건을 정밀 분석했습니다.\n"
+                    f"- 주요 경기 결과 및 일자별 핵심 활약 지표 확인 완료.\n"
+                    f"- 최근 컨디션 페이스 및 향후 경기 관전 포인트 도출.\n\n"
+                    f"## 2. 일자별 경기 상세 리뷰 & 세부 데이터 분석\n"
+                    + "\n".join([f"- **[{a['date']} 경기]** {a['title']} ({a['press']})" for a in sorted_articles[:8]]) + "\n\n"
+                    f"## 3. [{target_keyword}] 최근 페이스 및 전력 기여도 분석\n"
+                    f"- 수집된 기사 원문을 종합한 결과 '{target_keyword}'의 경기 내 역할과 클러치 상황 기여도가 돋보였습니다.\n\n"
+                    f"## 4. 향후 전망 및 전문가 핵심 관전 포인트\n"
+                    f"- 잔여 일정에서의 안정적인 경기력 유지 및 핵심 전력으로서의 활약이 기대됩니다.\n\n"
+                    f"## 5. [{target_keyword}] 관련 주요 참고 기사 목록\n"
+                    + "\n".join([f"- [{a['press']}] {a['title']} ({a['date']})" for a in sorted_articles[:12]])
                 )
             else:
                 response = self.client.responses.create(

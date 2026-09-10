@@ -497,7 +497,7 @@
                         btn.disabled = false;
                         btn.innerHTML = '<span>⚡</span> AI 보고서 작성';
                         statusBadge.innerText = '작성 완료';
-                        currentReportText = `# ⚾ KBO 야구 뉴스 AI 브리핑 보고서\n\n**분석 기간**: ${startDate} ~ ${endDate}\n\n## 1. 핵심 3줄 요약\n- 수집된 기사를 기반으로 경기 및 선수단 주요 이슈 분석 완료\n- 선발 마운드와 클러치 타선의 활약이 주요 화두로 부상\n- 순위 다툼이 치열해짐에 따라 경기별 불펜 운용이 승패 좌우\n\n## 2. 세부 이슈 및 시사점\n- 주요 선수들의 부상 복귀와 엔트리 변동 체크 필요\n- 향후 잔여 경기 일정에 따른 맞춤형 전략 수립 전망`;
+                        currentReportText = `# ⚾ [${keyword || '야구'}] AI 심층 분석 & 포커스 브리핑 리포트\n\n**분석 대상 기간**: ${startDate} ~ ${endDate}\n\n## 1. [${keyword || '야구'}] 핵심 활약상 3줄 요약\n- 기간 내 '${keyword || '야구'}' 관련 주요 경기 결과 및 출전 데이터 분석 완료\n- 핵심 승부처에서의 활약과 팀 내 기여도 지표 점검\n- 최근 컨디션 페이스 및 향후 경기 관전 포인트 도출\n\n## 2. 일자별 경기 상세 리뷰 & 세부 데이터 분석\n- [최근 경기]: 주요 투타 기록 및 클러치 상황 활약상\n\n## 3. 최근 페이스 및 전력 기여도 분석\n- 안정적인 경기력 유지 및 핵심 전력으로서의 가치 분석 완료`;
                         renderReport(currentReportText);
                         const askBotBtn = document.getElementById('btnAskBotAboutReport');
                         if (askBotBtn) askBotBtn.style.display = 'inline-flex';
