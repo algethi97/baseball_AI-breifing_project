@@ -13,6 +13,7 @@ import pandas as pd
 
 from mini_project_0909.crawler import search_naver_sports_articles, fetch_article_content
 from mini_project_0909.weather import get_all_stadiums_weather
+from mini_project_0909.database import DatabaseManager
 
 load_dotenv(override=True)
 
@@ -227,6 +228,35 @@ class BaseballBotAPI:
             return {
                 "status": "error",
                 "message": f"CSV 저장 중 오류가 발생했습니다: {str(e)}",
+            }
+
+    # ============================================================
+    # 3-2. 수집 데이터 고속 SQL CLI 데이터베이스 추출 (설계안 B)
+    # ============================================================
+    def export_articles_db(self, keyword: str = "", start_date: str = "", end_date: str = "") -> dict:
+        """
+        수집된 기사 데이터를 설계안 B(정규화 관계형 모델) 기반 SQLite DB 및
+        초고속 SQL CLI 배치 스크립트로 추출합니다.
+        """
+        if not self.collected_articles:
+            return {
+                "status": "error",
+                "message": "수집된 기사 데이터가 없습니다. 먼저 기사를 수집해주세요.",
+            }
+
+        target_keyword = keyword.strip() or self.current_keyword or "야구"
+        try:
+            res = DatabaseManager.export_database(
+                keyword=target_keyword,
+                start_date=start_date,
+                end_date=end_date,
+                articles=self.collected_articles,
+            )
+            return res
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"데이터베이스 추출 중 오류가 발생했습니다: {str(e)}",
             }
 
     # ============================================================

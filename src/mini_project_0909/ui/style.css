@@ -498,6 +498,7 @@
             display: flex;
             gap: 8px;
             margin-top: 4px;
+            flex-wrap: wrap;
         }
 
         /* Modern Buttons */
@@ -534,6 +535,18 @@
         .btn-secondary:hover {
             background: #059669;
             transform: translateY(-1px);
+        }
+
+        .btn-db {
+            background: #2563eb;
+            color: white;
+            box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+        }
+
+        .btn-db:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(37, 99, 235, 0.3);
         }
 
         .btn-accent {

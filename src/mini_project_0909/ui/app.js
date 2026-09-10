@@ -340,6 +340,45 @@
             }
         }
 
+        async function handleExportDb() {
+            if (!currentArticles || currentArticles.length === 0) {
+                showToast('먼저 기사를 수집해주세요.', '⚠️');
+                return;
+            }
+
+            const keyword = document.getElementById('crawlKeyword').value.trim();
+            const startDate = document.getElementById('crawlStartDate').value;
+            const endDate = document.getElementById('crawlEndDate').value;
+
+            const btn = document.getElementById('btnExportDb');
+            const originalHtml = btn ? btn.innerHTML : '<span>🗄️</span> 데이터베이스 추출';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> DB 추출 중...';
+            }
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.export_articles_db) {
+                    const res = await window.pywebview.api.export_articles_db(keyword, startDate, endDate);
+                    if (res && res.status === 'success') {
+                        showToast(res.message || '데이터베이스가 성공적으로 추출되었습니다!', '🗄️');
+                    } else {
+                        showToast(res.message || '데이터베이스 추출 실패', '❌');
+                    }
+                } else {
+                    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+                    showToast(`[테스트 모드] ${keyword || '야구'}_데이터베이스_${today}.db 추출 완료`, '🗄️');
+                }
+            } catch (err) {
+                showToast(`DB 저장 오류: ${err.message || err}`, '❌');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            }
+        }
+
         // ============================================================
         // 보고서 작성 & MD 저장 로직
         // ============================================================
