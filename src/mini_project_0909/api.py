@@ -102,9 +102,8 @@ class BaseballBotAPI:
                     f"{self.current_report}\n\n"
                     "※ 지침: 사용자가 보고서의 내용, 핵심 요약, 경기 리뷰, 세부 분석 등에 대해 질문하면 위 보고서 전문을 기반으로 명확하고 구체적으로 답변하세요."
                 )
-            elif self.collected_articles:
                 articles_list = [
-                    f"- [{a.get('date', '')}] {a.get('title', '')} ({a.get('press', '')}) : {a.get('snippet', '')[:80]}"
+                    f"- [{a.get('date', '')}] {a.get('title', '')} ({a.get('press', '')}) : {(a.get('content') or a.get('snippet', ''))[:100]}"
                     for a in self.collected_articles[:50]
                 ]
                 context_parts.append(
@@ -223,14 +222,24 @@ class BaseballBotAPI:
         save_path = CSV_EXPORT_DIR / filename
 
         try:
-            # 원본 컬럼 그대로 DataFrame 생성 (임의 컬럼 추가/삭제 금지 정책 엄격 준수)
-            df = pd.DataFrame(self.collected_articles)
+            # 기사 원문 컬럼(content)을 포함한 DataFrame 생성 (사용자 승인 컬럼 구조 적용)
+            records = []
+            for art in self.collected_articles:
+                item = dict(art)
+                if "content" not in item:
+                    item["content"] = item.pop("snippet", "")
+                records.append(item)
+
+            df = pd.DataFrame(records)
+            cols = [c for c in ["id", "category", "title", "press", "date", "url", "content"] if c in df.columns]
+            df = df[cols]
+
             # Excel 등 Windows 환경에서 한글 깨짐 방지를 위해 utf-8-sig 사용
             df.to_csv(save_path, index=False, encoding="utf-8-sig")
 
             return {
                 "status": "success",
-                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n저장위치: storage/csv/{filename}",
+                "message": f"CSV 파일이 성공적으로 저장되었습니다!\n저장위치: storage/csv/{filename}\n총 {len(df)}건의 기사 원문(content) 수록",
                 "filename": filename,
                 "path": str(save_path),
             }
@@ -241,12 +250,12 @@ class BaseballBotAPI:
             }
 
     # ============================================================
-    # 3-2. 수집 데이터 고속 SQL CLI 데이터베이스 추출 (설계안 B)
+    # 3-2. 수집 데이터 및 AI 보고서 고속 SQLite 누적 DB 추출 (설계안 B)
     # ============================================================
     def export_articles_db(self, keyword: str = "", start_date: str = "", end_date: str = "") -> dict:
         """
-        수집된 기사 데이터를 설계안 B(정규화 관계형 모델) 기반 SQLite DB로 추출합니다.
-        (exported/db 디렉터리에 .db 파일 및 부속 저널 파일 함께 보관)
+        수집된 기사 원문 데이터 및 AI 보고서를 설계안 B 기반 키워드별 누적 SQLite DB로 추출합니다.
+        (storage/db/{키워드}_데이터베이스.db에 기존 데이터 유지하며 누적 적재)
         """
         if not self.collected_articles:
             return {
@@ -261,6 +270,7 @@ class BaseballBotAPI:
                 start_date=start_date,
                 end_date=end_date,
                 articles=self.collected_articles,
+                report_md=self.current_report,
                 output_dir=DB_EXPORT_DIR,
             )
             return res
@@ -298,28 +308,30 @@ class BaseballBotAPI:
         # 날짜순 정렬
         sorted_articles = sorted(filtered, key=lambda x: x.get("date", ""), reverse=False)
 
-        # 1. 일자별 대표 기사 상세 본문 추출 (각 일자별 1건씩 최대 8건 발췌하여 깊이 있는 분석 지원)
+        # 1. 일자별 대표 기사 원문 상세 발췌 (수집된 원문 content 활용, 각 일자별 최대 8건에 대해 500자씩 발췌)
         seen_dates = set()
         representative_details = []
         for a in sorted_articles:
             d = a.get("date", "")
             if d not in seen_dates and len(representative_details) < 8:
                 seen_dates.add(d)
-                full_text = fetch_article_content(a["url"])
+                full_text = a.get("content") or fetch_article_content(a["url"])
                 if full_text:
                     representative_details.append(
-                        f"■ [{d} 대표 기사] 언론사: {a['press']} | 제목: {a['title']}\n"
-                        f"본문 요약: {full_text[:350]}\n"
+                        f"■ [{d} 대표 기사 원문] 언론사: {a['press']} | 제목: {a['title']}\n"
+                        f"기사 원문 발췌:\n{full_text[:500]}\n"
                     )
 
         rep_text = "\n".join(representative_details) if representative_details else "대표 본문 발췌 없음"
 
-        # 2. 수집된 전체 기사 목록 (1건도 빠짐없이 종합 분석할 수 있도록 제공)
+        # 2. 수집된 전체 기사 목록 (원문 핵심 앞단 요약 포함하여 전수 분석 지원)
         all_articles_list = []
         for i, a in enumerate(sorted_articles):
-            snippet_str = f" : {a['snippet'][:80]}" if a.get("snippet") else ""
+            content_text = a.get("content") or a.get("snippet", "")
+            content_snippet = content_text[:120].replace("\n", " ").strip() if content_text else ""
+            content_str = f" | 원문 요약: {content_snippet}" if content_snippet else ""
             all_articles_list.append(
-                f"[{i+1}] 날짜: {a['date']} | 언론사: {a['press']} | 제목: {a['title']}{snippet_str}"
+                f"[{i+1}] 날짜: {a['date']} | 언론사: {a['press']} | 제목: {a['title']}{content_str}"
             )
         all_articles_text = "\n".join(all_articles_list)
 

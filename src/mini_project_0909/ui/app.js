@@ -71,7 +71,7 @@
 
             if (hasReport) {
                 dot.classList.add('active-report');
-                text.innerHTML = `연동 완료: <strong>'${keyword || '야구'}'</strong> AI 종합 보고서 & 기사 ${articleCount}건 참조 중`;
+                text.innerHTML = `연동 완료: <strong>'${keyword || '야구'}'</strong> AI 심층 보고서 & 기사 원문 ${articleCount}건 참조 중`;
                 btn.innerText = '📄 보고서 보러가기';
                 btn.onclick = () => switchTab('research');
 
@@ -84,27 +84,27 @@
                 }
             } else if (articleCount > 0) {
                 dot.classList.add('active-articles');
-                text.innerHTML = `연동 중: <strong>'${keyword || '야구'}'</strong> 수집 기사 ${articleCount}건 참조 중`;
-                btn.innerText = '⚡ 보고서 작성하러 가기';
+                text.innerHTML = `연동 중: <strong>'${keyword || '야구'}'</strong> 기사 원문 ${articleCount}건 참조 중`;
+                btn.innerText = '⚡ AI 보고서 작성하러 가기';
                 btn.onclick = () => switchTab('research');
 
                 if (quickActions) {
                     quickActions.innerHTML = `
                         <button class="quick-btn" onclick="sendQuickMessage('수집된 기사들에서 가장 활약이 돋보인 선수는 누구야?')">🔥 주요 활약 선수</button>
                         <button class="quick-btn" onclick="sendQuickMessage('수집된 전체 기사의 전반적인 이슈와 분위기를 요약해줘')">📰 수집 기사 분위기</button>
-                        <button class="quick-btn" onclick="switchTab('research')">📝 AI 보고서 작성 탭</button>
+                        <button class="quick-btn" onclick="switchTab('research')">📝 AI 분석 보고서 탭</button>
                     `;
                 }
             } else {
                 text.innerText = '연동 상태: 일반 야구 지식 모드 (수집 데이터 없음)';
-                btn.innerText = '📰 기사 수집하기';
+                btn.innerText = '📰 기사 수집 & 분석';
                 btn.onclick = () => switchTab('research');
 
                 if (quickActions) {
                     quickActions.innerHTML = `
-                        <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 탭으로 이동</button>
+                        <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 & 분석 탭으로 이동</button>
                         <button class="quick-btn" onclick="sendQuickMessage('최근 KBO 리그 주요 관전 포인트 알려줘')">⚾ 주요 관전 포인트</button>
-                        <button class="quick-btn" onclick="sendQuickMessage('야구 기사 스크랩 및 요약 보고서 활용 팁 알려줘')">💡 보고서 활용 팁</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('기사 원문 수집 및 AI 분석 보고서 활용 팁 알려줘')">💡 분석 보고서 활용 팁</button>
                     `;
                 }
             }
@@ -230,7 +230,7 @@
                 <div class="empty-state">
                     <div class="empty-state-icon">⏳</div>
                     <div class="empty-state-text">
-                        '${keyword}' 관련 기사를 수집하고 있습니다...<br>잠시만 기다려 주세요.
+                        '${keyword}' 관련 기사 원문을 수집하고 있습니다...<br>잠시만 기다려 주세요.
                     </div>
                 </div>`;
 
@@ -238,12 +238,12 @@
                 if (window.pywebview && window.pywebview.api) {
                     const res = await window.pywebview.api.fetch_articles(keyword, startDate, endDate);
                     btn.disabled = false;
-                    btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
+                    btn.innerHTML = '<span>📥</span> 기사 원문 수집 (최대 200건)';
 
                     if (res && res.status === 'success') {
                         currentArticles = res.articles || [];
                         renderArticles(currentArticles);
-                        showToast(`${currentArticles.length}건의 기사를 수집했습니다! (최대 200건)`, '✅');
+                        showToast(`${currentArticles.length}건의 기사 원문을 수집했습니다! (최대 200건)`, '✅');
                         updateChatContextUI(keyword, currentArticles.length, !!currentReportText);
                     } else {
                         showToast(res.message || '기사 수집에 실패했습니다.', '❌');
@@ -252,19 +252,19 @@
                     // 브라우저 단독 테스트용 더미
                     setTimeout(() => {
                         btn.disabled = false;
-                        btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
+                        btn.innerHTML = '<span>📥</span> 기사 원문 수집 (최대 200건)';
                         currentArticles = [
                             { id: 1, title: `[KBO] '${keyword}' 가을야구 향한 총력전 돌입`, press: '스포츠조선', date: endDate, url: 'https://sports.news.naver.com/kbaseball/', snippet: '선수단 전원이 결집하여 후반기 순위 싸움에 박차를 가하고 있다.' },
                             { id: 2, title: `전문가 분석: 이번 주 '${keyword}' 핵심 관전 포인트는?`, press: 'OSEN', date: startDate, url: 'https://sports.news.naver.com/kbaseball/', snippet: '선발 투수진의 안정세와 중심 타선의 득점권 타율이 승패를 가를 전망이다.' }
                         ];
                         renderArticles(currentArticles);
-                        showToast(`${currentArticles.length}건의 기사를 수집했습니다. (테스트)`, '✅');
+                        showToast(`${currentArticles.length}건의 기사 원문을 수집했습니다. (테스트)`, '✅');
                         updateChatContextUI(keyword, currentArticles.length, !!currentReportText);
                     }, 800);
                 }
             } catch (err) {
                 btn.disabled = false;
-                btn.innerHTML = '<span>📥</span> 기사 수집 (최대 200건)';
+                btn.innerHTML = '<span>📥</span> 기사 원문 수집 (최대 200건)';
                 showToast(`에러: ${err.message || err}`, '❌');
             }
         }
@@ -285,7 +285,7 @@
         function renderArticles(articles) {
             const container = document.getElementById('articleListContainer');
             const countBadge = document.getElementById('articleCountBadge');
-            countBadge.innerText = `수집된 기사: ${articles.length}건 (최대 200건)`;
+            countBadge.innerText = `수집된 기사 원문: ${articles.length}건 (최대 200건)`;
 
             if (!articles || articles.length === 0) {
                 container.innerHTML = `
@@ -299,6 +299,8 @@
             let html = '';
             articles.forEach(art => {
                 const url = art.url || '#';
+                const bodyText = art.content || art.snippet || '';
+                const snippetText = bodyText.length > 180 ? bodyText.slice(0, 180) + '...' : bodyText;
                 html += `
                     <div class="article-card">
                         <div class="article-card-header">
@@ -309,7 +311,7 @@
                             </div>
                         </div>
                         <a href="${url}" target="_blank" onclick="event.preventDefault(); openExternalLink('${url}');" class="article-title">${art.title}</a>
-                        <p class="article-snippet">${art.snippet || ''}</p>
+                        <p class="article-snippet">${snippetText}</p>
                     </div>`;
             });
             container.innerHTML = html;
@@ -317,7 +319,7 @@
 
         async function handleExportCsv() {
             if (!currentArticles || currentArticles.length === 0) {
-                showToast('먼저 기사를 수집해주세요.', '⚠️');
+                showToast('먼저 기사 원문을 수집해주세요.', '⚠️');
                 return;
             }
 
@@ -327,7 +329,7 @@
                 if (window.pywebview && window.pywebview.api) {
                     const res = await window.pywebview.api.export_articles_csv(keyword);
                     if (res && res.status === 'success') {
-                        showToast(res.message || 'CSV 파일이 성공적으로 저장되었습니다!', '💾');
+                        showToast(res.message || '기사 원문 CSV 파일이 성공적으로 저장되었습니다!', '💾');
                     } else {
                         showToast(res.message || 'CSV 저장 실패', '❌');
                     }
@@ -342,7 +344,7 @@
 
         async function handleExportDb() {
             if (!currentArticles || currentArticles.length === 0) {
-                showToast('먼저 기사를 수집해주세요.', '⚠️');
+                showToast('먼저 기사 원문을 수집해주세요.', '⚠️');
                 return;
             }
 
@@ -351,7 +353,7 @@
             const endDate = document.getElementById('crawlEndDate').value;
 
             const btn = document.getElementById('btnExportDb');
-            const originalHtml = btn ? btn.innerHTML : '<span>🗄️</span> 데이터베이스 추출';
+            const originalHtml = btn ? btn.innerHTML : '<span>🗄️</span> 데이터베이스 추출 (.db)';
             if (btn) {
                 btn.disabled = true;
                 btn.innerHTML = '<span>⏳</span> DB 추출 중...';
@@ -361,13 +363,12 @@
                 if (window.pywebview && window.pywebview.api && window.pywebview.api.export_articles_db) {
                     const res = await window.pywebview.api.export_articles_db(keyword, startDate, endDate);
                     if (res && res.status === 'success') {
-                        showToast(res.message || '데이터베이스가 성공적으로 추출되었습니다!', '🗄️');
+                        showToast(res.message || '데이터베이스(.db) 파일이 성공적으로 추출되었습니다!', '🗄️');
                     } else {
                         showToast(res.message || '데이터베이스 추출 실패', '❌');
                     }
                 } else {
-                    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-                    showToast(`[테스트 모드] ${keyword || '야구'}_데이터베이스_${today}.db 추출 완료`, '🗄️');
+                    showToast(`[테스트 모드] ${keyword || '야구'}_데이터베이스.db 누적 적재 완료`, '🗄️');
                 }
             } catch (err) {
                 showToast(`DB 저장 오류: ${err.message || err}`, '❌');
@@ -384,7 +385,7 @@
         // ============================================================
         async function handleGenerateReport() {
             if (!currentArticles || currentArticles.length === 0) {
-                showToast('좌측에서 먼저 기사를 수집해주세요.', '⚠️');
+                showToast('좌측에서 먼저 기사 원문을 수집해주세요.', '⚠️');
                 return;
             }
 
@@ -403,8 +404,8 @@
                 <div class="empty-state">
                     <div class="empty-state-icon">🤖</div>
                     <div class="empty-state-text">
-                        해당 기간(${startDate} ~ ${endDate})의 기사를 선별하여<br>
-                        AI가 종합 요약 보고서를 작성하고 있습니다...
+                        해당 기간(${startDate} ~ ${endDate})의 기사 원문을 정밀 분석하여<br>
+                        AI가 맞춤 심층 분석 보고서를 작성하고 있습니다...
                     </div>
                 </div>`;
 
@@ -412,7 +413,7 @@
                 if (window.pywebview && window.pywebview.api) {
                     const res = await window.pywebview.api.generate_report(startDate, endDate, keyword);
                     btn.disabled = false;
-                    btn.innerHTML = '<span>⚡</span> 보고서 작성';
+                    btn.innerHTML = '<span>⚡</span> AI 보고서 작성';
                     statusBadge.innerText = '작성 완료';
 
                     if (res && res.status === 'success') {
@@ -425,7 +426,7 @@
                         if (res.saved_file) {
                             showToast(`보고서 작성 & 파일 저장 완료! (${res.saved_file})`, '📄');
                         } else {
-                            showToast('AI 요약 보고서 작성이 완료되었습니다!', '✅');
+                            showToast('AI 심층 분석 보고서 작성이 완료되었습니다!', '✅');
                         }
                     } else {
                         showToast(res.message || '보고서 생성 실패', '❌');
@@ -433,7 +434,7 @@
                 } else {
                     setTimeout(() => {
                         btn.disabled = false;
-                        btn.innerHTML = '<span>⚡</span> 보고서 작성';
+                        btn.innerHTML = '<span>⚡</span> AI 보고서 작성';
                         statusBadge.innerText = '작성 완료';
                         currentReportText = `# ⚾ KBO 야구 뉴스 AI 브리핑 보고서\n\n**분석 기간**: ${startDate} ~ ${endDate}\n\n## 1. 핵심 3줄 요약\n- 수집된 기사를 기반으로 경기 및 선수단 주요 이슈 분석 완료\n- 선발 마운드와 클러치 타선의 활약이 주요 화두로 부상\n- 순위 다툼이 치열해짐에 따라 경기별 불펜 운용이 승패 좌우\n\n## 2. 세부 이슈 및 시사점\n- 주요 선수들의 부상 복귀와 엔트리 변동 체크 필요\n- 향후 잔여 경기 일정에 따른 맞춤형 전략 수립 전망`;
                         renderReport(currentReportText);
@@ -447,7 +448,7 @@
                 }
             } catch (err) {
                 btn.disabled = false;
-                btn.innerHTML = '<span>⚡</span> 보고서 작성';
+                btn.innerHTML = '<span>⚡</span> AI 보고서 작성';
                 statusBadge.innerText = '오류';
                 showToast(`오류: ${err.message || err}`, '❌');
             }
