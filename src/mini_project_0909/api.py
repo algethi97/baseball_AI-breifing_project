@@ -265,6 +265,12 @@ class BaseballBotAPI:
 
         target_keyword = keyword.strip() or self.current_keyword or "야구"
         try:
+            # [자동 연계] 만약 작성된 보고서가 없다면 먼저 AI 보고서를 자동으로 작성하여 DB에 포함
+            if not self.current_report and self.collected_articles:
+                s_date = start_date or (self.collected_articles[-1].get("date", "") if self.collected_articles else "")
+                e_date = end_date or (self.collected_articles[0].get("date", "") if self.collected_articles else "")
+                self.generate_report(start_date=s_date, end_date=e_date, keyword=target_keyword)
+
             res = DatabaseManager.export_database(
                 keyword=target_keyword,
                 start_date=start_date,
