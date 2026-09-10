@@ -567,6 +567,152 @@
             }
         }
 
+        // ============================================================
+        // 저장된 보고서 (.md) 보관함 열람 로직
+        // ============================================================
+        function handleOpenSavedReportsModal() {
+            const modal = document.getElementById('savedReportsModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                loadSavedReportsList();
+            }
+        }
+
+        function handleCloseSavedReportsModal(e) {
+            if (e && e.target && e.target.id !== 'savedReportsModal' && !e.target.classList.contains('close-btn')) {
+                return;
+            }
+            const modal = document.getElementById('savedReportsModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        async function loadSavedReportsList() {
+            const container = document.getElementById('savedReportsListContainer');
+            const badge = document.getElementById('savedReportsCountBadge');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏳</div>
+                    <div class="empty-state-text">저장된 보고서 목록을 불러오는 중...</div>
+                </div>`;
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.list_saved_reports) {
+                    const res = await window.pywebview.api.list_saved_reports();
+                    if (res && res.status === 'success') {
+                        const reports = res.reports || [];
+                        if (badge) badge.innerText = `${reports.length}건`;
+                        renderSavedReportsList(reports);
+                    } else {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">⚠️</div>
+                                <div class="empty-state-text">${res.message || '보고서 목록 조회 실패'}</div>
+                            </div>`;
+                    }
+                } else {
+                    // 브라우저 단독 테스트 모드 더미
+                    setTimeout(() => {
+                        const dummyReports = [
+                            { filename: '이로운_보고서_260910.md', keyword: '이로운', size_kb: 11.6, updated_at: '2026-09-10 17:30' },
+                            { filename: '김광현_보고서_260908.md', keyword: '김광현', size_kb: 8.4, updated_at: '2026-09-08 15:20' }
+                        ];
+                        if (badge) badge.innerText = `${dummyReports.length}건`;
+                        renderSavedReportsList(dummyReports);
+                    }, 400);
+                }
+            } catch (err) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <div class="empty-state-text">목록 로딩 오류: ${err.message || err}</div>
+                    </div>`;
+            }
+        }
+
+        function renderSavedReportsList(reports) {
+            const container = document.getElementById('savedReportsListContainer');
+            if (!container) return;
+
+            if (!reports || reports.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📂</div>
+                        <div class="empty-state-text">
+                            storage/report/ 폴더에 저장된 보고서가 없습니다.<br>
+                            우측 상단의 <strong>[AI 보고서 작성]</strong> 후 저장해보세요.
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            let html = '';
+            reports.forEach(rep => {
+                const kwBadge = rep.keyword ? `<span class="report-meta-chip">🏷️ ${rep.keyword}</span>` : '';
+                html += `
+                    <div class="saved-report-item">
+                        <div class="report-item-info">
+                            <div class="report-item-title" title="${rep.filename}">
+                                <span>📄</span>
+                                <span>${rep.filename}</span>
+                            </div>
+                            <div class="report-item-meta">
+                                ${kwBadge}
+                                <span>📅 ${rep.updated_at}</span>
+                                <span>💾 ${rep.size_kb} KB</span>
+                            </div>
+                        </div>
+                        <button class="btn-load-report" onclick="handleSelectSavedReport('${rep.filename}')">
+                            <span>📖</span> 열람하기
+                        </button>
+                    </div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        async function handleSelectSavedReport(filename) {
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.load_saved_report) {
+                    const res = await window.pywebview.api.load_saved_report(filename);
+                    if (res && res.status === 'success') {
+                        currentReportText = res.report_md;
+                        renderReport(currentReportText);
+
+                        const statusBadge = document.getElementById('reportStatusBadge');
+                        if (statusBadge) statusBadge.innerText = `📂 ${filename}`;
+
+                        const kwInput = document.getElementById('crawlKeyword');
+                        if (kwInput && res.keyword && res.keyword !== '야구') {
+                            kwInput.value = res.keyword;
+                        }
+
+                        const askBotBtn = document.getElementById('btnAskBotAboutReport');
+                        if (askBotBtn) askBotBtn.style.display = 'inline-flex';
+
+                        updateChatContextUI(res.keyword || '야구', currentArticles.length, true);
+                        handleCloseSavedReportsModal();
+                        showToast(`'${filename}' 보고서를 불러왔습니다!`, '📂');
+                    } else {
+                        showToast(res.message || '보고서 불러오기 실패', '❌');
+                    }
+                } else {
+                    // 브라우저 테스트 모드
+                    currentReportText = `# ⚾ [${filename}] 불러온 보고서\n\n**파일명**: ${filename}\n\n## 1. 핵심 활약상 요약\n- storage/report/${filename} 파일의 내용이 정상적으로 렌더링되었습니다.`;
+                    renderReport(currentReportText);
+                    const statusBadge = document.getElementById('reportStatusBadge');
+                    if (statusBadge) statusBadge.innerText = `📂 ${filename}`;
+                    handleCloseSavedReportsModal();
+                    showToast(`[테스트] '${filename}' 보고서 열람 완료`, '📂');
+                }
+            } catch (err) {
+                showToast(`보고서 로딩 오류: ${err.message || err}`, '❌');
+            }
+        }
+
         window.addEventListener('pywebviewready', async () => {
             console.log('pywebview 브릿지가 준비되었습니다.');
             if (window.pywebview && window.pywebview.api && window.pywebview.api.get_context_status) {

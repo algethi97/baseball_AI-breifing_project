@@ -168,6 +168,9 @@
                             <button class="btn btn-accent" id="btnGenerateReport" onclick="handleGenerateReport()">
                                 <span>⚡</span> AI 보고서 작성
                             </button>
+                            <button class="btn btn-outline" id="btnOpenSavedReports" onclick="handleOpenSavedReportsModal()" title="storage/report 폴더에 저장된 이전 AI 보고서를 불러와 열람합니다.">
+                                <span>📂</span> 보고서 열기
+                            </button>
                             <button class="btn btn-outline" id="btnSaveReportMd" onclick="handleSaveReportMd()">
                                 <span>📄</span> 보고서 저장 (.md)
                             </button>
@@ -235,6 +238,32 @@
             </div>
         </section>
     </main>
+
+    <!-- 저장된 보고서 열람 모달 창 -->
+    <div class="modal-overlay" id="savedReportsModal" style="display:none;" onclick="handleCloseSavedReportsModal(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📂</span>
+                    <span>저장된 AI 보고서 보관함</span>
+                    <span class="panel-badge" id="savedReportsCountBadge" style="margin-left:8px;">0건</span>
+                </div>
+                <div class="modal-header-actions">
+                    <button class="icon-btn" onclick="loadSavedReportsList()" title="목록 새로고침">🔄</button>
+                    <button class="icon-btn close-btn" onclick="handleCloseSavedReportsModal()" title="닫기">✕</button>
+                </div>
+            </div>
+            <div class="modal-subtext">
+                <code>storage/report/</code> 디렉터리에 보관된 보고서를 선택하면 우측 분석 화면에 즉시 열람되고 챗봇과 연동됩니다.
+            </div>
+            <div class="modal-body" id="savedReportsListContainer">
+                <div class="empty-state">
+                    <div class="empty-state-icon">⏳</div>
+                    <div class="empty-state-text">저장된 보고서 목록을 불러오는 중...</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Global Toast Alert -->
     <div class="toast" id="toastNotice">

@@ -482,6 +482,80 @@ class BaseballBotAPI:
             }
 
     # ============================================================
+    # 5-2. 저장된 마크다운 보고서 목록 조회 및 열람
+    # ============================================================
+    def list_saved_reports(self) -> dict:
+        """
+        storage/report 디렉터리에 저장된 .md 보고서 파일 목록을 최신순으로 반환합니다.
+        """
+        try:
+            reports = []
+            if MD_EXPORT_DIR.exists():
+                for p in sorted(MD_EXPORT_DIR.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True):
+                    stat = p.stat()
+                    mtime_str = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+                    size_kb = round(stat.st_size / 1024, 1)
+
+                    # 파일명에서 키워드 추출 (예: 이로운_보고서_260910.md -> 이로운)
+                    kw = p.stem.split("_")[0] if "_" in p.stem else p.stem
+
+                    reports.append({
+                        "filename": p.name,
+                        "keyword": kw,
+                        "size_kb": size_kb,
+                        "updated_at": mtime_str,
+                        "path": str(p),
+                    })
+
+            return {
+                "status": "success",
+                "count": len(reports),
+                "reports": reports,
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"보고서 목록 조회 실패: {str(e)}",
+                "reports": [],
+            }
+
+    def load_saved_report(self, filename: str) -> dict:
+        """
+        storage/report 폴더의 특정 .md 파일을 읽어 반환하고,
+        현재 컨텍스트(current_report, current_keyword)를 갱신합니다.
+        """
+        safe_name = Path(filename).name
+        file_path = MD_EXPORT_DIR / safe_name
+
+        if not file_path.exists() or not file_path.is_file():
+            return {
+                "status": "error",
+                "message": f"'{safe_name}' 보고서 파일을 찾을 수 없습니다.",
+            }
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            self.current_report = content
+            # 파일명 앞자리에서 키워드 추출
+            kw = safe_name.split("_")[0] if "_" in safe_name else "야구"
+            self.current_keyword = kw
+
+            return {
+                "status": "success",
+                "filename": safe_name,
+                "keyword": kw,
+                "report_md": content,
+                "message": f"'{safe_name}' 보고서를 성공적으로 불러왔습니다.",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"보고서 파일 읽기 실패: {str(e)}",
+            }
+
+    # ============================================================
     # 6. 외부 브라우저 링크 열기
     # ============================================================
     def open_external_link(self, url: str) -> dict:
