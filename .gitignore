@@ -22,3 +22,10 @@ Thumbs.db
 *.csv
 baseball_report_*.md
 *_보고서_*.md
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
