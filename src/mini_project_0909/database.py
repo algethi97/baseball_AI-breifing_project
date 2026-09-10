@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS articles (
     press           TEXT,
     date            TEXT,
     url             TEXT UNIQUE NOT NULL,
-    snippet         TEXT,
+    content         TEXT,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -127,14 +127,15 @@ class DatabaseManager:
         end_date: str,
         articles: List[Dict[str, Any]],
         db_path: Path,
-    ) -> Tuple[int, int, float]:
+        report_md: Optional[str] = None,
+    ) -> Tuple[int, int, float, int]:
         """
-        단일 원자적 트랜잭션(Atomic Transaction)으로 기사 데이터를 고속 적재합니다.
-        Returns:
-            (query_id, 적재된 기사 수, 소요 시간(ms))
+        수집된 기사 목록 및 AI 보고서를 대상 SQLite DB에 고속으로 저장합니다.
+        기존 동일 URL 기사는 중복 적재를 방지(UPSERT)하며, AI 보고서가 전달된 경우 ai_reports 테이블에 함께 저장합니다.
+        반환값: (query_id, 이번 세션 저장/매핑 기사 수, 소요시간 ms, 누적 총 기사 수)
         """
         if not articles:
-            return 0, 0, 0.0
+            return 0, 0, 0.0, 0
 
         cls.init_db(db_path)
         start_time = time.perf_counter()
@@ -154,12 +155,12 @@ class DatabaseManager:
             )
             query_id = cursor.lastrowid
 
-            # 2. 기사 테이블 UPSERT 및 매핑 테이블 적재
+            # 2. 기사 테이블 UPSERT 및 매핑 테이블 적재 (content 컬럼 반영)
             upsert_sql = """
-            INSERT INTO articles (category, title, press, date, url, snippet)
+            INSERT INTO articles (category, title, press, date, url, content)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(url) DO UPDATE SET
-                snippet = CASE WHEN excluded.snippet != '' THEN excluded.snippet ELSE articles.snippet END,
+                content = CASE WHEN excluded.content != '' THEN excluded.content ELSE articles.content END,
                 category = excluded.category,
                 title = excluded.title,
                 press = excluded.press,
@@ -178,6 +179,8 @@ class DatabaseManager:
                 if not url_val:
                     continue
 
+                content_val = _safe_str(art.get("content") or art.get("snippet"))
+
                 cursor.execute(
                     upsert_sql,
                     (
@@ -186,7 +189,7 @@ class DatabaseManager:
                         _safe_str(art.get("press")),
                         _safe_str(art.get("date")),
                         url_val,
-                        _safe_str(art.get("snippet")),
+                        content_val,
                     ),
                 )
                 row = cursor.fetchone()
@@ -195,9 +198,23 @@ class DatabaseManager:
                     cursor.execute(mapping_sql, (query_id, article_id))
                     saved_count += 1
 
+            # 3. AI 보고서가 전달된 경우 ai_reports 테이블에 외래키(query_id) 연결 적재
+            if report_md and report_md.strip():
+                cursor.execute(
+                    """
+                    INSERT INTO ai_reports (query_id, report_md)
+                    VALUES (?, ?)
+                    """,
+                    (query_id, report_md.strip()),
+                )
+
+            # 4. 데이터베이스 내 누적 총 기사 수 확인
+            cursor.execute("SELECT COUNT(*) FROM articles;")
+            total_articles = cursor.fetchone()[0]
+
             conn.commit()
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return query_id, saved_count, elapsed_ms
+            return query_id, saved_count, elapsed_ms, total_articles
 
         finally:
             conn.close()
@@ -275,11 +292,12 @@ class DatabaseManager:
         start_date: str,
         end_date: str,
         articles: List[Dict[str, Any]],
+        report_md: Optional[str] = None,
         output_dir: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
-        수집된 기사 데이터를 고속 SQL CLI 방식으로 데이터베이스 파일(.db)과
-        배치 스크립트(.sql)로 동시 추출합니다.
+        수집된 기사 데이터 및 AI 보고서를 키워드별 누적 데이터베이스 파일({키워드}_데이터베이스.db)에
+        고속으로 적재(중복 URL 배제)하여 추출합니다.
         """
         if not articles:
             return {
@@ -292,22 +310,20 @@ class DatabaseManager:
         target_keyword = keyword.strip() or "야구"
         safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구기사"
 
-        extract_date = datetime.now().strftime("%y%m%d")
-        extract_time = datetime.now().strftime("%H%M%S")
-
-        # 1. 고속 독립 DB 파일 생성
-        db_filename = f"{safe_keyword}_데이터베이스_{extract_date}_{extract_time}.db"
+        # 1. 키워드별 고유 누적 DB 파일 지정 (이전에 저장된 적이 있으면 동일 파일에 누적)
+        db_filename = f"{safe_keyword}_데이터베이스.db"
         db_path = target_dir / db_filename
 
-        query_id, saved_count, elapsed_ms = cls.save_articles_to_db(
+        query_id, saved_count, elapsed_ms, total_articles = cls.save_articles_to_db(
             keyword=target_keyword,
             start_date=start_date,
             end_date=end_date,
             articles=articles,
             db_path=db_path,
+            report_md=report_md,
         )
 
-        # 2. 통합 영구 DB(baseball_news.db)에도 누적 적재
+        # 2. 통합 영구 DB(baseball_news.db)에도 전체 누적 적재
         main_db_path = target_dir / cls.DEFAULT_DB_NAME
         try:
             cls.save_articles_to_db(
@@ -316,6 +332,7 @@ class DatabaseManager:
                 end_date=end_date,
                 articles=articles,
                 db_path=main_db_path,
+                report_md=report_md,
             )
         except Exception as e:
             print(f"통합 DB 동기화 경고: {e}")
@@ -343,16 +360,22 @@ class DatabaseManager:
         except Exception:
             cli_verified = False
 
+        has_report_str = "포함 (ai_reports 테이블 적재 완료)" if report_md and report_md.strip() else "미포함 (기사만 적재)"
+
         return {
             "status": "success",
             "message": (
-                f"데이터베이스 추출 완료! (처리속도: {elapsed_ms:.2f}ms)\n"
-                f"- DB 파일: storage/db/{db_filename} ({saved_count}건 저장)\n"
+                f"데이터베이스 누적 저장 완료! (처리속도: {elapsed_ms:.2f}ms)\n"
+                f"- DB 파일: storage/db/{db_filename}\n"
+                f"- 기사 적재: 이번 세션 {saved_count}건 (누적 총 {total_articles}건, 중복 제외)\n"
+                f"- AI 보고서: {has_report_str}\n"
                 f"- 통합 DB(baseball_news.db) 동기화 완료"
             ),
             "db_filename": db_filename,
             "db_path": str(db_path),
             "count": saved_count,
+            "total_articles": total_articles,
             "elapsed_ms": elapsed_ms,
             "cli_verified": cli_verified,
+            "has_report": bool(report_md and report_md.strip()),
         }
