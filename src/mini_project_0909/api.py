@@ -16,6 +16,7 @@ from mini_project_0909.crawler import search_naver_sports_articles, fetch_articl
 from mini_project_0909.weather import get_all_stadiums_weather
 from mini_project_0909.database import DatabaseManager
 from mini_project_0909.normalizer import normalize_keyword, NormalizedEntity
+from mini_project_0909.ai_db_service import SQLAlchemyAIDatabaseEngine
 
 load_dotenv(override=True)
 
@@ -39,6 +40,13 @@ class BaseballBotAPI:
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = client or (OpenAI(api_key=api_key) if api_key else None)
         self.model = model
+
+        # SQLAlchemy 2.0 기반 AI DB 제어 엔진 초기화 (통합 baseball_news.db 대상)
+        self.ai_db_service = SQLAlchemyAIDatabaseEngine(
+            db_path=DB_EXPORT_DIR / "baseball_news.db",
+            client=self.client,
+            model=self.model,
+        )
 
         # 챗봇용 시스템 지침 (KBO 전문 데이터 분석관 & 해설위원 페르소나)
         self.chat_instructions = (
@@ -87,9 +95,18 @@ class BaseballBotAPI:
 
     def _detect_crawl_intent(self, message: str) -> dict:
         """
-        사용자의 메시지가 네이버 스포츠 기사 수집(크롤링/검색) 요청인지 분석하고,
+        사용자의 메시지가 새로운 네이버 스포츠 기사 수집(크롤링/검색) 요청인지 분석하고,
         키워드와 수집 기간(start_date, end_date)을 추출합니다.
+        (주의: 데이터베이스/DB 질의는 크롤링에서 엄격히 배제)
         """
+        msg_low = message.lower()
+        # DB 지시어나 직전 결과 연속 작업이 포함된 경우 크롤링으로 빠지지 않도록 사전 차단 (Fast-Path 배제)
+        db_keywords = ["데이터베이스", "db", "디비", "테이블", "스키마", "컬럼", "쿼리", "sql", "북마크", "bookmark", "삭제해", "지워줘"]
+        if any(dk in msg_low for dk in db_keywords):
+            return {"is_crawl": False, "keyword": "", "start_date": "", "end_date": ""}
+        if any(ci in msg_low for ci in ["방금", "직전", "이 기사들"]) and any(ca in msg_low for ca in ["삭제", "지워", "제거", "북마크", "등록", "조회"]):
+            return {"is_crawl": False, "keyword": "", "start_date": "", "end_date": ""}
+
         if not self.client:
             return {"is_crawl": False, "keyword": "", "start_date": "", "end_date": ""}
 
@@ -97,14 +114,18 @@ class BaseballBotAPI:
         today_str = today.strftime("%Y-%m-%d")
         default_start_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
 
-        prompt = f"""당신은 사용자의 야구 챗봇 대화에서 '기사 수집(크롤링/검색) 요청' 여부를 판별하고 파라미터를 추출하는 분류기입니다.
+        prompt = f"""당신은 사용자의 야구 챗봇 대화에서 '새로운 웹 기사 수집(크롤링/검색) 요청' 여부를 판별하고 파라미터를 추출하는 분류기입니다.
 오늘 기준일: {today_str} (기본 시작일 7일전: {default_start_str})
 
 사용자의 입력: "{message}"
 
-사용자가 네이버 스포츠 기사를 검색/수집/크롤링/모아달라고 요청하는 의도인지 판단하세요.
-- 단순히 이미 수집된 기사나 야구 상식/선수 의견을 질문하는 경우는 is_crawl: false 입니다. (예: "이로운 어제 어땠어?", "어제 잠실 경기 결과 알려줘", "홈런 몇 개 쳤어?")
-- 새롭게 기사를 찾아달라거나 수집해달라고 요청하는 경우 is_crawl: true 입니다. (예: "류현진 최근 일주일 기사 모아줘", "김도영 이번 달 기사 찾아봐", "이로운 9월 1일부터 9월 9일까지 기사 수집해줘", "한화 이글스 소식 긁어와줘", "기아 타이거즈 기사 검색해줘", "최근 야구 뉴스 모아봐")
+[엄격한 판별 기준]
+1. 새롭게 외부 웹(네이버 스포츠)에서 기사를 검색/수집/크롤링/모아달라고 요청하는 경우에만 is_crawl: true 입니다.
+   - 예: "류현진 최근 일주일 기사 모아줘", "김도영 이번 달 기사 찾아봐", "이로운 9월 1일부터 9월 9일까지 기사 수집해줘", "한화 이글스 소식 긁어와줘", "기아 타이거즈 기사 검색해줘", "최근 야구 뉴스 모아봐"
+2. 다음 경우는 절대로 크롤링이 아니므로 반드시 is_crawl: false 로 판별하세요:
+   - 데이터베이스(DB)나 저장된 데이터에서 조회/검색/필터링하는 요청 (예: "데이터베이스에서 아빌라 기사 중 스포츠조선만 조회해줘", "저장된 기사 중 OSEN 기사 보여줘", "언론사별 기사 통계")
+   - 단순히 이미 수집된 기사나 야구 상식/선수 의견을 질문하는 경우 (예: "이로운 어제 어땠어?", "어제 잠실 경기 결과 알려줘", "홈런 몇 개 쳤어?")
+   - 구장 날씨 질문, AI 요약 보고서 설명 요청
 
 is_crawl이 true인 경우:
 1. keyword: 검색할 대상 키워드(선수명, 구단명, 핵심 야구 토픽)만 간결한 단어로 추출하세요. 구체적 대상이 없으면 "야구" 또는 핵심 키워드로 지정하세요.
@@ -132,6 +153,105 @@ is_crawl이 true인 경우:
             return data
         except Exception:
             return {"is_crawl": False, "keyword": "", "start_date": default_start_str, "end_date": today_str}
+
+    def _detect_db_intent(self, message: str) -> bool:
+        """
+        사용자의 메시지가 저장된 데이터베이스(baseball_news.db)에 대한 조회, 통계, 필터링, 테이블 생성(DDL), CRUD 요청인지 판별합니다.
+        키워드 기반 Fast-Path 및 LLM 정밀 판별 결합.
+        """
+        msg_low = message.lower()
+
+        # 0. 명백한 웹 크롤링 요청(수집해, 모아줘, 긁어와, 크롤링 등)이면서 명시적 DB 단어가 없는 경우 ➔ 크롤링 모듈로 넘김
+        crawl_verbs = ["수집해", "모아줘", "긁어와", "크롤링"]
+        direct_db_words = ["데이터베이스", "db", "디비", "sqlite", "테이블", "스키마", "컬럼", "sql", "쿼리"]
+        has_direct_db = any(w in msg_low for w in direct_db_words)
+        has_crawl_verb = any(cv in msg_low for cv in crawl_verbs)
+
+        if has_crawl_verb and not has_direct_db:
+            return False
+
+        # 1. 고신뢰도 Fast-Path 룰베이스 감지 (즉시 DB 의도로 확정)
+        # 1-1. 명시적 DB 지시어
+        if has_direct_db:
+            return True
+
+        # 1-2. 저장 데이터 지정 및 조건부 필터링 표현
+        filter_indicators = [
+            "저장된 기사", "보관된 기사", "수집된 기사 중", "기사 중",
+            "신문사가", "언론사가", "특정 신문사", "특정 언론사",
+            "만 조회", "만 뽑아", "만 골라", "만 보여", "만 필터",
+        ]
+        if any(fi in msg_low for fi in filter_indicators):
+            return True
+
+        # 1-3. 집계 및 그룹 통계 표현
+        agg_indicators = [
+            "언론사별", "신문사별", "매체별", "날짜별", "일자별",
+            "기사 건수", "기사 개수", "기사 통계", "언론사 통계", "총 기사수",
+            "북마크", "bookmark", "즐겨찾기",
+        ]
+        if any(ai in msg_low for ai in agg_indicators):
+            return True
+
+        # '기사 수' 단어 경계 체크 (기사 수집 등 제외)
+        if re.search(r"기사\s*수(?!집)", msg_low):
+            return True
+
+        # 1-4. 조건부 데이터 삭제/제거 표현
+        delete_indicators = ["삭제", "지워", "제거"]
+        if any(di in msg_low for di in delete_indicators) and any(kw in msg_low for kw in ["기사", "데이터", "행", "테이블", "레코드", "제목"]):
+            return True
+
+        # 1-5. 제목(title) 기준 조건 조회/검색 표현
+        if any(tw in msg_low for tw in ["제목에", "제목이", "제목에서", "title에"]) and any(qw in msg_low for qw in ["조회", "검색", "찾아", "보여", "뽑아", "출력", "필터"]):
+            return True
+
+        # 1-6. 직전 대화 맥락 및 연속 작업 표현 (방금 조회된 기사 삭제, 북마크 등록 등)
+        context_chain_indicators = ["방금", "직전", "이 기사들", "그 중에서", "방금 나온"]
+        chain_actions = ["삭제", "지워", "제거", "북마크", "bookmark", "추가", "등록", "저장", "조회", "필터", "보여", "뽑아"]
+        if any(ci in msg_low for ci in context_chain_indicators) and any(ca in msg_low for ca in chain_actions):
+            return True
+
+        if not self.client:
+            return False
+
+        # 2. LLM 정밀 분류기 (자연어 질의 분석)
+        prompt = f"""사용자의 입력이 로컬 SQLite 데이터베이스(baseball_news.db)에 대한 조회/검색/필터링, 통계 분석, 테이블 생성(DDL), 데이터 조작(CRUD) 명령인지 판별하세요.
+입력: "{message}"
+
+[판별 기준]
+- is_db: true 조건:
+  1. DB 테이블 생성/수정/삭제 (DDL)
+  2. DB 내 컬럼, 스키마, 구조 확인
+  3. DB 저장 데이터 통계/집계 (예: 언론사별 기사 건수, 날짜별 수집량)
+  4. DB 테이블(articles 등)에서 특정 조건(선수명, 특정 언론사/신문사, 날짜 등)에 해당하는 레코드를 조회/필터링/검색해달라는 요청
+     (예: "아빌라 기사 중 신문사가 스포츠조선인 것만 조회해줘", "저장된 기사 중 OSEN 기사만 보여줘")
+  5. 특정 문구가 제목(title)에 포함된 기사를 조건부로 조회하거나 삭제(DELETE)해달라는 요청
+     (예: "제목에 '아빌라' 들어간 기사 조회해줘", "제목에 '[임시테스트]' 포함된 기사 삭제해줘")
+  6. 직전 대화에서 조회된 기사들을 참조하여 삭제, 북마크 추가, 추가 필터링 등 연속 작업을 요청하는 경우
+     (예: "방금 조회된 기사들을 삭제해줘", "방금 나온 기사들 북마크 테이블에 추가해줘")
+- is_db: false 조건:
+  1. 외부 웹(네이버 스포츠)에서 새로운 기사를 수집/크롤링해달라는 요청
+  2. 일반 야구 선수/경기 소식 질문, 구장 날씨 질문, 생성된 AI 보고서 요약 요청
+
+반드시 마크다운 없이 순수 JSON 한 줄로만 출력하세요:
+{{"is_db": true/false}}"""
+
+        try:
+            resp = self.client.responses.create(
+                model=self.model,
+                instructions="You are a strict DB intent classifier. Output pure JSON only.",
+                input=prompt,
+            )
+            text_resp = resp.output_text.strip()
+            if text_resp.startswith("```"):
+                text_resp = text_resp.split("```")[1]
+                if text_resp.startswith("json"):
+                    text_resp = text_resp[4:]
+            data = json.loads(text_resp.strip())
+            return bool(data.get("is_db"))
+        except Exception:
+            return False
 
     def _find_relevant_articles(self, user_query: str, top_k: int = 4) -> list:
         """
@@ -174,14 +294,46 @@ is_crawl이 true인 경우:
 
     def send_message(self, message: str) -> dict:
         """
-        사용자의 챗봇 질문을 받아 자연어 크롤링 의도 분석 또는
+        사용자의 챗봇 질문을 받아 자연어 크롤링 의도 분석, SQLAlchemy AI DB 제어, 또는
         수집된 기사 본문 전문(Smart RAG) & 요약 보고서 컨텍스트와 함께 OpenAI Responses API로 답변 반환
         """
         user_text = message.strip()
         if not user_text:
             return {"status": "error", "reply": "질문 내용을 입력해주세요."}
 
-        # 1. 자연어 기사 수집(크롤링) 명령 의도 감지
+        # 1. [1순위] 자연어 데이터베이스(SQLAlchemy 2.0 DDL/CRUD/통계/필터링) 명령 의도 감지
+        if self._detect_db_intent(user_text):
+            db_res = self.ai_db_service.ask(user_text)
+            sql = db_res.get("sql", "")
+            q_type = db_res.get("query_type", "UNKNOWN")
+            msg = db_res.get("message", "")
+            md_table = db_res.get("markdown_table", "")
+
+            reply_parts = []
+            if sql:
+                reply_parts.append(f"```sql\n{sql}\n```")
+            if msg:
+                reply_parts.append(msg)
+            if md_table:
+                reply_parts.append("\n" + md_table)
+
+            reply_text = "\n\n".join(reply_parts)
+            self.conversation_history.append({"role": "user", "content": user_text})
+            self.conversation_history.append({"role": "assistant", "content": reply_text})
+
+            return {
+                "status": db_res.get("status", "success"),
+                "reply": reply_text,
+                "action": {
+                    "type": "db_query_result",
+                    "sql": sql,
+                    "query_type": q_type,
+                    "row_count": db_res.get("row_count", 0),
+                    "markdown_table": md_table,
+                },
+            }
+
+        # 2. [2순위] 자연어 기사 수집(크롤링) 명령 의도 감지
         crawl_intent = self._detect_crawl_intent(user_text)
         if crawl_intent.get("is_crawl") and crawl_intent.get("keyword"):
             keyword = crawl_intent["keyword"].strip()
