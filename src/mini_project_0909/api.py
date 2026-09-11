@@ -15,6 +15,7 @@ import pandas as pd
 from mini_project_0909.crawler import search_naver_sports_articles, fetch_article_content
 from mini_project_0909.weather import get_all_stadiums_weather
 from mini_project_0909.database import DatabaseManager
+from mini_project_0909.normalizer import normalize_keyword, NormalizedEntity
 
 load_dotenv(override=True)
 
@@ -57,6 +58,7 @@ class BaseballBotAPI:
         # 수집된 기사 및 최근 작성된 보고서 저장소
         self.collected_articles = []
         self.current_keyword = ""
+        self.current_entity: Optional[NormalizedEntity] = None
         self.current_report = ""
 
         # 실시간 전국 구장 날씨 캐시
@@ -69,11 +71,17 @@ class BaseballBotAPI:
         """
         현재 챗봇이 참조하고 있는 기사 수집 및 보고서 연동 상태를 반환합니다.
         """
+        canonical = self.current_entity.canonical if self.current_entity else self.current_keyword
+        safe_id = self.current_entity.safe_id if self.current_entity else self.current_keyword
+        synonyms = self.current_entity.synonyms if self.current_entity else []
         return {
             "status": "success",
             "has_articles": bool(self.collected_articles),
             "article_count": len(self.collected_articles),
             "keyword": self.current_keyword,
+            "canonical_keyword": canonical,
+            "safe_id": safe_id,
+            "synonyms": synonyms,
             "has_report": bool(self.current_report),
         }
 
@@ -149,7 +157,14 @@ is_crawl이 true인 경우:
                 if qw in content:
                     score += 1
 
-            if self.current_keyword and self.current_keyword.lower() in title:
+            if self.current_entity and self.current_entity.synonyms:
+                for syn in self.current_entity.synonyms:
+                    syn_low = syn.lower()
+                    if syn_low in title:
+                        score += 3
+                    if syn_low in content:
+                        score += 1
+            elif self.current_keyword and self.current_keyword.lower() in title:
                 score += 2
 
             scored_articles.append((score, a))
@@ -181,12 +196,15 @@ is_crawl이 true인 경우:
                 max_results=200,
             )
             count = len(self.collected_articles)
+            canonical_name = self.current_entity.canonical if self.current_entity else keyword
+            safe_id = self.current_entity.safe_id if self.current_entity else keyword
 
             if count > 0:
                 press_samples = list({a.get("press") for a in self.collected_articles if a.get("press")})[:4]
                 press_text = f", {', '.join(press_samples)} 등" if press_samples else ""
+                name_disp = f"**'{canonical_name}'**(입력: '{keyword}')" if canonical_name != keyword else f"**'{keyword}'**"
                 reply_text = (
-                    f"⚾ **'{keyword}'** 관련 네이버 스포츠 기사 원문 총 **{count}건**을 성공적으로 수집했습니다!\n\n"
+                    f"⚾ {name_disp} 관련 네이버 스포츠 기사 원문 총 **{count}건**을 성공적으로 수집했습니다!\n\n"
                     f"- 📅 **수집 대상 기간**: `{start_date} ~ {end_date}`\n"
                     f"- 📰 **주요 수집 매체**: {press_text}\n"
                     f"- 💡 **분석 안내**: 아래 버튼을 클릭하시면 기사 수집 탭으로 이동하여 전체 기사 목록과 상세 본문을 확인하실 수 있습니다. "
@@ -206,7 +224,10 @@ is_crawl이 true인 경우:
                 "reply": reply_text,
                 "action": {
                     "type": "crawl_completed",
-                    "keyword": keyword,
+                    "keyword": canonical_name,
+                    "raw_keyword": keyword,
+                    "canonical_keyword": canonical_name,
+                    "safe_id": safe_id,
                     "start_date": start_date,
                     "end_date": end_date,
                     "article_count": count,
@@ -311,23 +332,43 @@ is_crawl이 true인 경우:
         """
         'sports.news.naver.com' 도메인 내에서 키워드와 기간에 부합하는 야구 기사를 실시간 크롤링합니다.
         (최대 max_results건, 기본 200건)
+        키워드 정규화(Normalization) 엔진을 적용하여 동의어 및 표준 엔티티를 자동 식별합니다.
         """
-        keyword = keyword.strip()
-        if not keyword:
+        raw_keyword = keyword.strip()
+        if not raw_keyword:
             return {"status": "error", "message": "키워드를 입력해주세요."}
 
-        # 1차: 기간 조건을 포함하여 sports.news.naver.com 기사 탐색
+        # 1. 키워드 정규화 수행
+        entity = normalize_keyword(raw_keyword, client=self.client, model=self.model)
+        self.current_entity = entity
+        self.current_keyword = entity.canonical
+
+        # 2. 1차: 입력 키워드로 sports.news.naver.com 기사 탐색
         articles = search_naver_sports_articles(
-            keyword=keyword,
+            keyword=raw_keyword,
             start_date=start_date,
             end_date=end_date,
             max_results=max_results,
         )
 
+        # 만약 입력 키워드와 canonical이 다르고 결과가 너무 적으면 canonical 키워드로 보강 탐색
+        if len(articles) < 5 and entity.canonical != raw_keyword:
+            canon_articles = search_naver_sports_articles(
+                keyword=entity.canonical,
+                start_date=start_date,
+                end_date=end_date,
+                max_results=max_results,
+            )
+            existing_urls = {a.get("url") for a in articles}
+            for ca in canon_articles:
+                if ca.get("url") not in existing_urls:
+                    articles.append(ca)
+                    existing_urls.add(ca.get("url"))
+
         # 기간 조건으로 결과가 없을 경우 (포털 검색 인덱스 한계 대비 최신순 fallback)
         if not articles:
             articles = search_naver_sports_articles(
-                keyword=keyword,
+                keyword=raw_keyword,
                 start_date="",
                 end_date="",
                 max_results=min(max_results, 50),
@@ -336,17 +377,22 @@ is_crawl이 true인 경우:
         if not articles:
             return {
                 "status": "warning",
-                "message": f"'{keyword}' 관련 네이버 스포츠 기사를 찾지 못했습니다. 키워드를 확인해주세요.",
+                "message": f"'{raw_keyword}'(표준명: {entity.canonical}) 관련 네이버 스포츠 기사를 찾지 못했습니다. 키워드를 확인해주세요.",
                 "articles": [],
                 "count": 0,
+                "canonical_keyword": entity.canonical,
+                "safe_id": entity.safe_id,
             }
 
         self.collected_articles = articles
-        self.current_keyword = keyword
         return {
             "status": "success",
             "count": len(articles),
             "articles": articles,
+            "keyword": raw_keyword,
+            "canonical_keyword": entity.canonical,
+            "safe_id": entity.safe_id,
+            "synonyms": entity.synonyms,
         }
 
     # ============================================================
@@ -364,10 +410,10 @@ is_crawl이 true인 경우:
                 "message": "수집된 기사 데이터가 없습니다. 먼저 기사를 수집해주세요.",
             }
 
-        # 키워드 결정 (파라미터 우선 -> 수집 시 저장된 키워드 -> 기본값)
+        # 키워드 결정 및 정규화
         target_keyword = keyword.strip() or self.current_keyword or "야구"
-        # 파일명에 사용할 수 없는 특수문자 및 공백 정제
-        safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구기사"
+        entity = normalize_keyword(target_keyword, client=self.client, model=self.model)
+        safe_keyword = entity.safe_id or "야구기사"
 
         # 추출 날짜 및 시간 생성
         extract_date = datetime.now().strftime("%y%m%d")
@@ -466,19 +512,28 @@ is_crawl이 true인 경우:
             filtered = self.collected_articles
 
         total_count = len(filtered)
-        target_keyword = keyword.strip() or self.current_keyword or "야구"
+        raw_kw = keyword.strip() or (self.current_entity.raw_keyword if self.current_entity else self.current_keyword) or "야구"
+        entity = (
+            self.current_entity
+            if (self.current_entity and self.current_entity.raw_keyword == raw_kw)
+            else normalize_keyword(raw_kw, client=self.client, model=self.model)
+        )
+        self.current_entity = entity
+        target_keyword = entity.canonical
 
         # 날짜순 정렬
         sorted_articles = sorted(filtered, key=lambda x: x.get("date", ""), reverse=False)
 
-        # 1. 키워드 연관도(Relevance Score) 계산 및 핵심 기사 우선 발췌
+        # 1. 키워드 동의어 풀 전체 연관도(Relevance Score) 계산 및 핵심 기사 우선 발췌
         def get_relevance_score(art: dict) -> int:
             t = art.get("title", "")
             c = art.get("content", "") or art.get("snippet", "")
             score = 0
-            if target_keyword:
-                score += t.count(target_keyword) * 15
-                score += c.count(target_keyword) * 3
+            # 정규화된 동의어 풀 내 모든 단어의 출현 빈도 합산
+            for syn in entity.synonyms:
+                if syn:
+                    score += t.count(syn) * 15
+                    score += c.count(syn) * 3
             return score
 
         # 연관도 높은 순으로 정렬한 기사 목록 (발췌용)
@@ -515,16 +570,19 @@ is_crawl이 true인 경우:
             )
         all_articles_text = "\n".join(all_articles_list)
 
+        synonyms_str = ", ".join(entity.synonyms[:5])
         instructions = (
             f"당신은 프로야구(KBO) 전문 데이터 분석가이자 스포츠 칼럼니스트입니다.\n"
-            f"사용자가 지정한 핵심 검색 키워드 **'{target_keyword}'**에 100% 집중하여, 해당 키워드와 직접 관련된 사건, 경기 활약상, 데이터, 이슈만을 엄격하게 심층 분석한 '키워드 맞춤 포커스 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
+            f"사용자가 지정한 핵심 검색 키워드 **'{target_keyword}'**(동의어/약칭: {synonyms_str})에 100% 집중하여, "
+            f"해당 키워드와 직접 관련된 사건, 경기 활약상, 데이터, 이슈만을 엄격하게 심층 분석한 '키워드 맞춤 포커스 브리핑 보고서'를 마크다운으로 작성해주세요.\n\n"
             "[★ 가장 중요한 핵심 원칙: 키워드 초집중 (Strict Keyword Focus)]\n"
             f"1. **주제 일탈 엄격 금지 (No Topic Drift)**: 보고서의 모든 단락, 문장, 분석의 핵심 주어(Subject)는 반드시 **'{target_keyword}'**여야 합니다.\n"
+            f"   - 기사 내에서 '{synonyms_str}' 등의 동의어나 약칭으로 언급된 내용도 모두 '{target_keyword}'의 기록 및 활약상으로 정확히 결합하여 분석하세요.\n"
             f"   - '{target_keyword}'와 직접적인 관련이 없는 타 구단의 경기 결과, 타 선수들의 활약, 리그 일반 순위 싸움 등 무관한 내용은 보고서에 일절 언급하지 마세요.\n"
             f"   - 타 팀이나 상대 선수는 오직 '{target_keyword}'와의 직접적인 맞대결이나 승부처 맥락에서만 1줄 이내로 제한적으로 언급하세요.\n"
             f"2. **키워드가 '선수'인 경우 (예: 김도영, 이로운, 류현진 등)**:\n"
             f"   - 해당 선수의 일자별 출전/등판 경기, 투타 세부 기록(이닝, 탈삼진, 자책점, 투구수 / 타수, 안타, 홈런, 타점, 타율), 위기관리 및 클러치 활약, 투구/타격 폼, 팀 내 역할 및 최근 컨디션 페이스에 온전히 초점을 맞추세요.\n"
-            f"3. **키워드가 '구단'인 경우 (예: SSG 랜더스, KIA 타이거즈 등)**:\n"
+            f"3. **키워드가 '구단'인 경우 (예: 한화 이글스, KIA 타이거즈 등)**:\n"
             f"   - 해당 구단의 기간 내 경기 승패, 선발/불펜 투수진 운용, 타선 득점권 집중력, 주요 수훈 선수, 엔트리/부상 변동, 팀 전략에 집중하세요.\n\n"
             "[작성 양식 및 필수 목차]\n"
             f"# ⚾ [{target_keyword}] AI 심층 분석 & 포커스 브리핑 리포트\n"
@@ -606,7 +664,8 @@ is_crawl이 true인 경우:
 
         if not filename:
             target_keyword = keyword.strip() or self.current_keyword or "야구"
-            safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구"
+            entity = normalize_keyword(target_keyword, client=self.client, model=self.model)
+            safe_keyword = entity.safe_id or "야구"
             extract_date = datetime.now().strftime("%y%m%d")
             extract_time = datetime.now().strftime("%H%M%S")
 

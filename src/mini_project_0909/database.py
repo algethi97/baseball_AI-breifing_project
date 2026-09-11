@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from mini_project_0909.normalizer import normalize_keyword
+
 # 프로젝트 루트 및 기본 DB storage 디렉터리 (storage/db)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_EXPORT_DB_DIR = PROJECT_ROOT / "storage" / "db"
@@ -26,6 +28,7 @@ SCHEMA_DDL = """
 CREATE TABLE IF NOT EXISTS search_queries (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     keyword         TEXT NOT NULL,
+    canonical_keyword TEXT,
     start_date      TEXT,
     end_date        TEXT,
     collected_count INTEGER NOT NULL DEFAULT 0,
@@ -109,12 +112,23 @@ class DatabaseManager:
     @classmethod
     def init_db(cls, db_path: Path) -> None:
         """
-        데이터베이스 파일에 스키마 및 인덱스를 생성합니다.
+        데이터베이스 파일에 스키마 및 인덱스를 생성하고, 하위 호환 컬럼을 확인합니다.
         """
         conn = sqlite3.connect(db_path)
         try:
             cls.apply_speed_optimizations(conn)
             conn.executescript(SCHEMA_DDL)
+
+            # 기존 DB와의 호환성을 위한 컬럼 마이그레이션
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(search_queries);")
+            cols = [row[1] for row in cursor.fetchall()]
+            if "canonical_keyword" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE search_queries ADD COLUMN canonical_keyword TEXT;")
+                except Exception:
+                    pass
+
             conn.commit()
         finally:
             conn.close()
@@ -128,6 +142,7 @@ class DatabaseManager:
         articles: List[Dict[str, Any]],
         db_path: Path,
         report_md: Optional[str] = None,
+        canonical_keyword: Optional[str] = None,
     ) -> Tuple[int, int, float, int]:
         """
         수집된 기사 목록 및 AI 보고서를 대상 SQLite DB에 고속으로 저장합니다.
@@ -145,13 +160,19 @@ class DatabaseManager:
             cls.apply_speed_optimizations(conn)
             cursor = conn.cursor()
 
-            # 1. 수집 쿼리 세션 등록
+            # 1. 수집 쿼리 세션 등록 (표준 키워드 함께 적재)
             cursor.execute(
                 """
-                INSERT INTO search_queries (keyword, start_date, end_date, collected_count)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO search_queries (keyword, canonical_keyword, start_date, end_date, collected_count)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (_safe_str(keyword, "야구"), _safe_str(start_date), _safe_str(end_date), len(articles)),
+                (
+                    _safe_str(keyword, "야구"),
+                    _safe_str(canonical_keyword or keyword, "야구"),
+                    _safe_str(start_date),
+                    _safe_str(end_date),
+                    len(articles),
+                ),
             )
             query_id = cursor.lastrowid
 
@@ -307,10 +328,14 @@ class DatabaseManager:
 
         target_dir = output_dir or DEFAULT_EXPORT_DB_DIR
         target_dir.mkdir(parents=True, exist_ok=True)
-        target_keyword = keyword.strip() or "야구"
-        safe_keyword = re.sub(r"[^\w가-힣0-9_-]", "", target_keyword).strip() or "야구기사"
 
-        # 1. 키워드별 고유 누적 DB 파일 지정 (이전에 저장된 적이 있으면 동일 파일에 누적)
+        # 키워드 정규화 수행
+        entity = normalize_keyword(keyword)
+        target_keyword = keyword.strip() or entity.canonical
+        canonical_keyword = entity.canonical
+        safe_keyword = entity.safe_id or "야구기사"
+
+        # 1. 키워드별 고유 누적 DB 파일 지정 (정규화 safe_id 기준으로 동일 파일에 누적)
         db_filename = f"{safe_keyword}_데이터베이스.db"
         db_path = target_dir / db_filename
 
@@ -321,6 +346,7 @@ class DatabaseManager:
             articles=articles,
             db_path=db_path,
             report_md=report_md,
+            canonical_keyword=canonical_keyword,
         )
 
         # 2. 통합 영구 DB(baseball_news.db)에도 전체 누적 적재
@@ -333,6 +359,7 @@ class DatabaseManager:
                 articles=articles,
                 db_path=main_db_path,
                 report_md=report_md,
+                canonical_keyword=canonical_keyword,
             )
         except Exception as e:
             print(f"통합 DB 동기화 경고: {e}")
@@ -366,11 +393,13 @@ class DatabaseManager:
             "status": "success",
             "message": (
                 f"데이터베이스 누적 저장 완료! (처리속도: {elapsed_ms:.2f}ms)\n"
+                f"- 표준 대상: '{canonical_keyword}' (입력: '{target_keyword}')\n"
                 f"- DB 파일: storage/db/{db_filename}\n"
                 f"- 기사 적재: 이번 세션 {saved_count}건 (누적 총 {total_articles}건, 중복 제외)\n"
                 f"- AI 보고서: {has_report_str}\n"
                 f"- 통합 DB(baseball_news.db) 동기화 완료"
             ),
+            "canonical_keyword": canonical_keyword,
             "db_filename": db_filename,
             "db_path": str(db_path),
             "count": saved_count,
