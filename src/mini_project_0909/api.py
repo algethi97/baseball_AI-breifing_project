@@ -13,7 +13,7 @@ from openai import OpenAI
 import pandas as pd
 
 from mini_project_0909.crawler import search_naver_sports_articles, fetch_article_content
-from mini_project_0909.weather import get_all_stadiums_weather
+from mini_project_0909.weather import get_all_stadiums_weather, save_current_weather_to_db
 from mini_project_0909.database import DatabaseManager
 from mini_project_0909.normalizer import normalize_keyword, NormalizedEntity
 from mini_project_0909.ai_db_service import SQLAlchemyAIDatabaseEngine
@@ -210,6 +210,16 @@ is_crawl이 true인 경우:
         context_chain_indicators = ["방금", "직전", "이 기사들", "그 중에서", "방금 나온"]
         chain_actions = ["삭제", "지워", "제거", "북마크", "bookmark", "추가", "등록", "저장", "조회", "필터", "보여", "뽑아"]
         if any(ci in msg_low for ci in context_chain_indicators) and any(ca in msg_low for ca in chain_actions):
+            return True
+
+        # 1-7. 구장 날씨 이력(stadium_weather_history) 관련 질의 표현
+        weather_db_indicators = [
+            "날씨 기록", "날씨 이력", "날씨 저장", "날씨 조회", "날씨 통계",
+            "비 온 구장", "비온 구장", "비가 온 구장", "우천 취소", "우천 주의",
+            "기온이 가장", "기온 높은", "기온 순위", "구장별 기온",
+            "stadium_weather_history",
+        ]
+        if any(wi in msg_low for wi in weather_db_indicators):
             return True
 
         if not self.client:
@@ -942,9 +952,55 @@ is_crawl이 true인 경우:
     def get_stadiums_weather(self) -> dict:
         """
         KBO 전국 11개 구장(정규 9개 + 제2구장 2개: 포항, 울산 문수)의 실시간 기상정보 및 우천 취소 가능성 지수를 조회합니다.
+        조회된 실시간 관측 데이터는 백그라운드에서 stadium_weather_history 테이블에 자동으로 영구 적재(Auto-Archive)됩니다.
         """
         res = get_all_stadiums_weather()
         if res.get("status") == "success":
             self.latest_weather_data = res
+            # 백그라운드 DB 자동 적재 (오류가 나도 실시간 조회에는 영향 없도록 보호)
+            try:
+                save_current_weather_to_db(DB_EXPORT_DIR / "baseball_news.db")
+            except Exception as e:
+                print(f"구장 날씨 자동 DB 적재 경고: {e}")
         return res
+
+    def get_weather_history_dates(self) -> dict:
+        """
+        DB에 누적 저장된 구장 날씨 관측 일자 및 시간대 목록을 조회합니다.
+        (UI 날씨 대시보드 날짜/시간 선택 셀렉트박스 바인딩용)
+        """
+        try:
+            dates = DatabaseManager.get_weather_history_dates(DB_EXPORT_DIR / "baseball_news.db")
+            return {"status": "success", "dates": dates}
+        except Exception as e:
+            return {"status": "error", "message": f"날씨 이력 일자 목록 조회 실패: {str(e)}", "dates": []}
+
+    def get_weather_history(self, base_date: str, base_time: str) -> dict:
+        """
+        특정 일자(YYYY-MM-DD) 및 시간대(HH:00)의 전국 11개 구장 기상 관측 기록을 조회합니다.
+        """
+        try:
+            records = DatabaseManager.get_stadium_weather_history(
+                base_date=base_date,
+                base_time=base_time,
+                db_path=DB_EXPORT_DIR / "baseball_news.db",
+            )
+            return {
+                "status": "success",
+                "base_date": base_date,
+                "base_time": base_time,
+                "count": len(records),
+                "stadiums": records,
+            }
+        except Exception as e:
+            return {"status": "error", "message": f"날씨 이력 기록 조회 실패: {str(e)}", "stadiums": []}
+
+    def save_current_weather_record(self) -> dict:
+        """
+        현재 시각 기준 전국 11개 구장 기상청 실황 관측 데이터를 DB에 수동 즉시 저장합니다.
+        """
+        try:
+            return save_current_weather_to_db(DB_EXPORT_DIR / "baseball_news.db")
+        except Exception as e:
+            return {"status": "error", "message": f"날씨 기록 저장 실패: {str(e)}"}
 

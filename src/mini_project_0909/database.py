@@ -65,12 +65,35 @@ CREATE TABLE IF NOT EXISTS ai_reports (
     FOREIGN KEY (query_id) REFERENCES search_queries(id) ON DELETE SET NULL
 );
 
+-- 5. KBO 구장별 날씨 관측 이력 테이블 (초단기실황 일별/시간대별 누적)
+CREATE TABLE IF NOT EXISTS stadium_weather_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    stadium_id      TEXT NOT NULL,          -- 구장 고유 ID ('jamsil', 'munhak' 등)
+    stadium_name    TEXT NOT NULL,          -- 구장명 ('서울 잠실야구장' 등)
+    base_date       TEXT NOT NULL,          -- 관측 일자 ('YYYY-MM-DD')
+    base_time       TEXT NOT NULL,          -- 관측 정시 시각 ('HH:00')
+    temp            REAL,                   -- 기온 수치 (℃)
+    temp_str        TEXT,                   -- 기온 표시 문자열 ('24.5℃')
+    rain            REAL DEFAULT 0.0,       -- 1시간 강수량 (mm)
+    humidity        REAL,                   -- 습도 (%)
+    wind_speed      REAL DEFAULT 0.0,       -- 풍속 (m/s)
+    pty             INTEGER DEFAULT 0,      -- 강수형태 코드 (0:없음, 1:비, 2:비/눈, 3:눈, 5:빗방울 등)
+    status_label    TEXT,                   -- 경기 진행 상태 ('🟢 정상 진행 가능', '🔴 우천 취소 우려' 등)
+    badge_class     TEXT,                   -- UI 상태 뱃지 클래스 ('badge-safe', 'badge-danger' 등)
+    status_desc     TEXT,                   -- 경기 진행 상태 상세 설명
+    icon            TEXT,                   -- 날씨 아이콘 ('☀️', '🌧️', '⛈️' 등)
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (stadium_id, base_date, base_time)
+);
+
 -- 인덱스 (조회 및 검색 성능 최적화)
 CREATE INDEX IF NOT EXISTS idx_articles_date ON articles(date);
 CREATE INDEX IF NOT EXISTS idx_articles_press ON articles(press);
 CREATE INDEX IF NOT EXISTS idx_queries_keyword ON search_queries(keyword);
 CREATE INDEX IF NOT EXISTS idx_ak_query_id ON article_keywords(query_id);
 CREATE INDEX IF NOT EXISTS idx_ak_article_id ON article_keywords(article_id);
+CREATE INDEX IF NOT EXISTS idx_swh_date_time ON stadium_weather_history(base_date, base_time);
+CREATE INDEX IF NOT EXISTS idx_swh_stadium ON stadium_weather_history(stadium_id);
 """
 
 
@@ -408,3 +431,131 @@ class DatabaseManager:
             "cli_verified": cli_verified,
             "has_report": bool(report_md and report_md.strip()),
         }
+
+    @classmethod
+    def save_stadium_weather_records(
+        cls,
+        records: List[Dict[str, Any]],
+        db_path: Path,
+    ) -> int:
+        """
+        11개 구장의 날씨 관측 레코드를 stadium_weather_history 테이블에 고속 UPSERT 적재합니다.
+        (stadium_id, base_date, base_time) 고유 제약 조건으로 중복 저장을 방지하고 최신값으로 갱신합니다.
+        반환값: 성공적으로 적재/갱신된 구장 수
+        """
+        if not records:
+            return 0
+
+        cls.init_db(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            cls.apply_speed_optimizations(conn)
+            cursor = conn.cursor()
+
+            upsert_sql = """
+            INSERT INTO stadium_weather_history (
+                stadium_id, stadium_name, base_date, base_time,
+                temp, temp_str, rain, humidity, wind_speed, pty,
+                status_label, badge_class, status_desc, icon
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(stadium_id, base_date, base_time) DO UPDATE SET
+                temp = excluded.temp,
+                temp_str = excluded.temp_str,
+                rain = excluded.rain,
+                humidity = excluded.humidity,
+                wind_speed = excluded.wind_speed,
+                pty = excluded.pty,
+                status_label = excluded.status_label,
+                badge_class = excluded.badge_class,
+                status_desc = excluded.status_desc,
+                icon = excluded.icon,
+                created_at = CURRENT_TIMESTAMP;
+            """
+
+            saved_count = 0
+            for r in records:
+                cursor.execute(
+                    upsert_sql,
+                    (
+                        _safe_str(r.get("stadium_id") or r.get("id")),
+                        _safe_str(r.get("stadium_name") or r.get("name")),
+                        _safe_str(r.get("base_date")),
+                        _safe_str(r.get("base_time")),
+                        r.get("temp_num"),
+                        _safe_str(r.get("temp", "--")),
+                        float(r.get("rain_num", 0.0) or 0.0),
+                        r.get("humidity_num"),
+                        float(r.get("wind_num", 0.0) or 0.0),
+                        int(r.get("pty", 0) or 0),
+                        _safe_str(r.get("status_label", "🟢 정상 진행 가능")),
+                        _safe_str(r.get("badge_class", "badge-safe")),
+                        _safe_str(r.get("status_desc", "")),
+                        _safe_str(r.get("icon", "☀️")),
+                    ),
+                )
+                saved_count += 1
+
+            conn.commit()
+            return saved_count
+        finally:
+            conn.close()
+
+    @classmethod
+    def get_stadium_weather_history(
+        cls,
+        base_date: str,
+        base_time: str,
+        db_path: Path,
+    ) -> List[Dict[str, Any]]:
+        """
+        특정 날짜(YYYY-MM-DD) 및 시간대(HH:00)의 구장별 날씨 이력 목록을 조회합니다.
+        """
+        cls.init_db(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            query = """
+            SELECT id, stadium_id, stadium_name, base_date, base_time,
+                   temp, temp_str, rain, humidity, wind_speed, pty,
+                   status_label, badge_class, status_desc, icon, created_at
+            FROM stadium_weather_history
+            WHERE base_date = ? AND base_time = ?
+            ORDER BY id ASC;
+            """
+            cursor.execute(query, (base_date.strip(), base_time.strip()))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    @classmethod
+    def get_weather_history_dates(cls, db_path: Path) -> List[Dict[str, Any]]:
+        """
+        DB에 누적 저장된 날씨 관측 일자 및 시간대 목록을 최신순으로 조회합니다.
+        반환 예시: [{'base_date': '2026-09-11', 'base_time': '15:00', 'count': 11}, ...]
+        """
+        cls.init_db(db_path)
+        conn = sqlite3.connect(db_path)
+        try:
+            cursor = conn.cursor()
+            query = """
+            SELECT base_date, base_time, COUNT(*) as count
+            FROM stadium_weather_history
+            GROUP BY base_date, base_time
+            ORDER BY base_date DESC, base_time DESC;
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            return [
+                {
+                    "base_date": r[0],
+                    "base_time": r[1],
+                    "count": r[2],
+                    "label": f"{r[0]} {r[1]} ({r[2]}개 구장)",
+                }
+                for r in rows
+            ]
+        finally:
+            conn.close()
+

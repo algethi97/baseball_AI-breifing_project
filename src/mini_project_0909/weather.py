@@ -5,11 +5,15 @@
 import os
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_DB_PATH = PROJECT_ROOT / "storage" / "db" / "baseball_news.db"
 
 # KBO 10개 구단 주요 홈구장 및 제2구장 (총 11개 구장) 메타데이터
 STADIUMS = [
@@ -265,11 +269,29 @@ def fetch_stadium_weather(stadium: Dict, api_key: str, base_date: str, base_time
                 pty=pty, rn1=rain, wsd=wind_speed, is_dome=stadium["is_dome"]
             )
 
+            temp_num = None
+            if temp != "--":
+                try:
+                    temp_num = float(temp)
+                except ValueError:
+                    temp_num = None
+
+            humidity_num = None
+            if humidity != "--":
+                try:
+                    humidity_num = float(humidity)
+                except ValueError:
+                    humidity_num = None
+
             result.update({
                 "temp": f"{temp}℃" if temp != "--" else "--",
+                "temp_num": temp_num,
                 "rain": f"{rain:.1f} mm",
+                "rain_num": rain,
                 "humidity": f"{humidity}%" if humidity != "--" else "--",
+                "humidity_num": humidity_num,
                 "wind_speed": f"{wind_speed:.1f} m/s",
+                "wind_num": wind_speed,
                 "pty": pty,
                 "status_label": status_label,
                 "badge_class": badge_class,
@@ -312,4 +334,92 @@ def get_all_stadiums_weather() -> Dict:
         "count": len(stadiums_data),
         "stadiums": stadiums_data,
     }
+
+
+def save_current_weather_to_db(db_path: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    현재 기상청 초단기실황 기준 11개 구장 날씨를 수집하여 stadium_weather_history 테이블에 고속 UPSERT 적재합니다.
+    """
+    from mini_project_0909.database import DatabaseManager
+
+    target_db = db_path or DEFAULT_DB_PATH
+    res = get_all_stadiums_weather()
+    if res.get("status") != "success":
+        return {
+            "status": "error",
+            "message": res.get("message", "기상 데이터 수집에 실패했습니다."),
+            "saved_count": 0,
+        }
+
+    stadiums_data = res.get("stadiums", [])
+    if not stadiums_data:
+        return {"status": "error", "message": "수집된 구장 날씨 데이터가 없습니다.", "saved_count": 0}
+
+    # base_date를 YYYY-MM-DD, base_time을 HH:00 형식으로 통일
+    records_to_save = []
+    for s in stadiums_data:
+        raw_date = str(s.get("base_date", "")).replace("-", "")
+        raw_time = str(s.get("base_time", "")).replace(":", "")
+
+        formatted_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}" if len(raw_date) == 8 else raw_date
+        formatted_time = f"{raw_time[:2]}:00" if len(raw_time) >= 2 else raw_time
+
+        item = dict(s)
+        item["base_date"] = formatted_date
+        item["base_time"] = formatted_time
+        records_to_save.append(item)
+
+    saved_count = DatabaseManager.save_stadium_weather_records(records_to_save, target_db)
+
+    return {
+        "status": "success",
+        "message": f"전국 11개 구장 기상 데이터 DB 적재 완료! (기준: {records_to_save[0]['base_date']} {records_to_save[0]['base_time']})",
+        "saved_count": saved_count,
+        "base_date": records_to_save[0]["base_date"],
+        "base_time": records_to_save[0]["base_time"],
+        "stadiums": records_to_save,
+    }
+
+
+def archive_target_time_weather(
+    base_date: str,
+    base_time: str,
+    db_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """
+    지정된 날짜(YYYY-MM-DD 또는 YYYYMMDD) 및 정시 시각(HH:00 또는 HH00)의
+    전국 11개 구장 기상 데이터를 기상청 API로 조회하여 DB에 적재합니다.
+    """
+    from mini_project_0909.database import DatabaseManager
+
+    api_key = os.getenv("DATA_GO_KR_API_KEY", "")
+    if not api_key:
+        return {"status": "error", "message": "DATA_GO_KR_API_KEY가 없습니다.", "saved_count": 0}
+
+    target_db = db_path or DEFAULT_DB_PATH
+    clean_date = base_date.replace("-", "").strip()
+    clean_time = base_time.replace(":", "").strip()
+    if len(clean_time) == 2:
+        clean_time += "00"
+
+    formatted_date = f"{clean_date[:4]}-{clean_date[4:6]}-{clean_date[6:]}" if len(clean_date) == 8 else clean_date
+    formatted_time = f"{clean_time[:2]}:00"
+
+    records = []
+    for stadium in STADIUMS:
+        w_data = fetch_stadium_weather(stadium, api_key, clean_date, clean_time)
+        w_data["base_date"] = formatted_date
+        w_data["base_time"] = formatted_time
+        records.append(w_data)
+
+    saved_count = DatabaseManager.save_stadium_weather_records(records, target_db)
+    return {
+        "status": "success",
+        "message": f"{formatted_date} {formatted_time} 11개 구장 날씨 {saved_count}건 DB 적재 완료!",
+        "saved_count": saved_count,
+        "base_date": formatted_date,
+        "base_time": formatted_time,
+        "stadiums": records,
+    }
+
 

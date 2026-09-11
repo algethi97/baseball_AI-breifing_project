@@ -208,7 +208,12 @@ class SQLAlchemyAIDatabaseEngine:
             "   - 반드시 [직전 대화 및 쿼리 실행 컨텍스트]에 기록된 대상 테이블과 레코드 ID 목록(WHERE id IN (...)) 또는 직전 조건을 활용하여 후속 쿼리(조건부 삭제, 북마크 테이블로 복사/등록, 추가 필터링 등)를 안전하고 정확하게 작성하세요.\n"
             "   - 예시 1 (방금 조회된 기사 삭제): DELETE FROM articles WHERE id IN (101, 102, ...);\n"
             "   - 예시 2 (방금 조회된 기사 북마크 등록): INSERT INTO baseball_bookmarks (article_id, title, press, memo, created_at) SELECT id, title, press, 'AI 북마크', CURRENT_TIMESTAMP FROM articles WHERE id IN (101, 102, ...);\n"
-            "   - 예시 3 (방금 나온 기사 재필터링): SELECT * FROM articles WHERE id IN (101, 102, ...) AND date >= '2026-09-10';"
+            "   - 예시 3 (방금 나온 기사 재필터링): SELECT * FROM articles WHERE id IN (101, 102, ...) AND date >= '2026-09-10';\n"
+            "8. [KBO 구장 날씨 이력 테이블 (stadium_weather_history)]:\n"
+            "   - 구장별 관측 날씨, 기온(temp: 실수), 강수량(rain: 실수 mm), 습도(humidity), 풍속(wind_speed), 경기 진행 상태(status_label: '🟢 정상 진행 가능', '🔴 우천 취소 우려', '🟡 우천 주의 (방수포)' 등)가 기록되어 있습니다.\n"
+            "   - 비가 온 구장 / 우천 취소 우려 질의: WHERE rain > 0 OR status_label LIKE '%우천%'\n"
+            "   - 기온 순위 질의: ORDER BY temp DESC (최고 기온) 또는 ORDER BY temp ASC (최저 기온)\n"
+            "   - 특정 일자/시간대 질의: WHERE base_date = 'YYYY-MM-DD' AND base_time = 'HH:00'"
         )
 
         prompt = (
