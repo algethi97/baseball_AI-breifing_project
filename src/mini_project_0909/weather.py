@@ -336,22 +336,30 @@ def get_all_stadiums_weather() -> Dict:
     }
 
 
-def save_current_weather_to_db(db_path: Optional[Path] = None) -> Dict[str, Any]:
+def save_current_weather_to_db(
+    db_path: Optional[Path] = None,
+    stadiums_data: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """
-    현재 기상청 초단기실황 기준 11개 구장 날씨를 수집하여 stadium_weather_history 테이블에 고속 UPSERT 적재합니다.
+    현재 기상청 초단기실황 기준 11개 구장 날씨를 stadium_weather_history 테이블에 고속 UPSERT 적재합니다.
+    - stadiums_data가 전달되면 외부 API 재호출 없이 기존 데이터를 재사용하여 불필요한 네트워크 중복을 방지합니다.
+    - stadiums_data가 None인 경우에만 기상청 API(get_all_stadiums_weather)를 직접 호출합니다.
     """
     from mini_project_0909.database import DatabaseManager
 
     target_db = db_path or DEFAULT_DB_PATH
-    res = get_all_stadiums_weather()
-    if res.get("status") != "success":
-        return {
-            "status": "error",
-            "message": res.get("message", "기상 데이터 수집에 실패했습니다."),
-            "saved_count": 0,
-        }
 
-    stadiums_data = res.get("stadiums", [])
+    # stadiums_data가 이미 전달된 경우 기상청 API 재호출을 생략(중복 호출 방지 최적화)
+    if stadiums_data is None:
+        res = get_all_stadiums_weather()
+        if res.get("status") != "success":
+            return {
+                "status": "error",
+                "message": res.get("message", "기상 데이터 수집에 실패했습니다."),
+                "saved_count": 0,
+            }
+        stadiums_data = res.get("stadiums", [])
+
     if not stadiums_data:
         return {"status": "error", "message": "수집된 구장 날씨 데이터가 없습니다.", "saved_count": 0}
 

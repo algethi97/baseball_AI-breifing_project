@@ -957,9 +957,12 @@ is_crawl이 true인 경우:
         res = get_all_stadiums_weather()
         if res.get("status") == "success":
             self.latest_weather_data = res
-            # 백그라운드 DB 자동 적재 (오류가 나도 실시간 조회에는 영향 없도록 보호)
+            # 백그라운드 DB 자동 적재 (이미 수신한 stadiums_data를 전달하여 기상청 API 2중 중복 호출 방지)
             try:
-                save_current_weather_to_db(DB_EXPORT_DIR / "baseball_news.db")
+                save_current_weather_to_db(
+                    db_path=DB_EXPORT_DIR / "baseball_news.db",
+                    stadiums_data=res.get("stadiums", []),
+                )
             except Exception as e:
                 print(f"구장 날씨 자동 DB 적재 경고: {e}")
         return res
