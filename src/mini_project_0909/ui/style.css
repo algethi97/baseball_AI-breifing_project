@@ -1337,3 +1337,146 @@
             background: var(--primary-light);
             transform: translateY(-1px);
         }
+
+        /* ============================================================
+           SQLAlchemy 2.0 AI DB Query & Result Styles
+           ============================================================ */
+
+        .sql-code-box {
+            margin: 12px 0 8px 0;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .sql-code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 14px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #94a3b8;
+            letter-spacing: 0.02em;
+        }
+
+        .sql-copy-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 3px 9px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sql-copy-btn:hover {
+            background: var(--accent, #3b82f6);
+            color: #ffffff;
+            border-color: var(--accent, #3b82f6);
+        }
+
+        .sql-code-content {
+            margin: 0;
+            padding: 12px 14px;
+            font-family: 'Consolas', 'Fira Code', 'Monaco', monospace;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            color: #38bdf8;
+            background: transparent;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* 마크다운 DB 결과 테이블 (Data Grid) */
+        .markdown-table-wrap {
+            margin: 12px 0;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        }
+
+        .db-result-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            text-align: left;
+            background: #ffffff;
+        }
+
+        .db-result-table th {
+            background: #f1f5f9;
+            color: #1e293b;
+            font-weight: 700;
+            padding: 9px 12px;
+            border-bottom: 2px solid #cbd5e1;
+            white-space: nowrap;
+        }
+
+        .db-result-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #334155;
+            white-space: nowrap;
+        }
+
+        .db-result-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+
+        .db-result-table tr:hover {
+            background: #eff6ff;
+        }
+
+        /* 챗봇 AI DB 실행 배지 카드 */
+        .chat-db-badge-card {
+            margin-top: 10px;
+            padding: 8px 14px;
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.78rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }
+
+        .db-badge-type {
+            background: #15803d;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.72rem;
+            letter-spacing: 0.04em;
+        }
+
+        .db-badge-info {
+            color: #166534;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        .chat-db-badge-card.delete-badge {
+            background: #fef2f2;
+            border-color: #fca5a5;
+        }
+
+        .db-badge-type.delete-type {
+            background: #dc2626;
+        }
+
+        .delete-badge .db-badge-info {
+            color: #991b1b;
+        }
+
+

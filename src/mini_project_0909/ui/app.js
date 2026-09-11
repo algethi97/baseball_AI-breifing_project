@@ -91,20 +91,23 @@
                 if (quickActions) {
                     quickActions.innerHTML = `
                         <button class="quick-btn" onclick="sendQuickMessage('수집된 기사들에서 가장 활약이 돋보인 선수는 누구야?')">🔥 주요 활약 선수</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('DB에 저장된 언론사별 기사 건수 상위 5곳 통계 내줘')">📊 DB 언론사별 기사 통계</button>
                         <button class="quick-btn" onclick="sendQuickMessage('수집된 전체 기사의 전반적인 이슈와 분위기를 요약해줘')">📰 수집 기사 분위기</button>
                         <button class="quick-btn" onclick="switchTab('research')">📝 AI 분석 보고서 탭</button>
                     `;
                 }
             } else {
-                text.innerText = '연동 상태: 일반 야구 지식 모드 (수집 데이터 없음)';
+                text.innerText = '연동 상태: 일반 야구 지식 & SQLAlchemy 2.0 DB 제어 모드';
                 btn.innerText = '📰 기사 수집 & 분석';
                 btn.onclick = () => switchTab('research');
 
                 if (quickActions) {
                     quickActions.innerHTML = `
                         <button class="quick-btn" onclick="switchTab('research')">📰 기사 수집 & 분석 탭으로 이동</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('DB에 저장된 언론사별 기사 건수 상위 5곳 통계 내줘')">📊 DB 언론사별 기사 통계</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('현재 데이터베이스에 어떤 테이블들이 있고 구조가 어떻게 돼?')">📋 DB 스키마 확인</button>
+                        <button class="quick-btn" onclick="sendQuickMessage('DB에 저장된 최근 수집 세션 이력 5개 보여줘')">🔍 수집 세션 이력</button>
                         <button class="quick-btn" onclick="sendQuickMessage('최근 KBO 리그 주요 관전 포인트 알려줘')">⚾ 주요 관전 포인트</button>
-                        <button class="quick-btn" onclick="sendQuickMessage('기사 원문 수집 및 AI 분석 보고서 활용 팁 알려줘')">💡 분석 보고서 활용 팁</button>
                     `;
                 }
             }
@@ -133,6 +136,75 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        function formatChatText(text) {
+            if (!text) return '';
+            
+            // 1. 코드 블록 처리 (```sql ... ```)
+            let formatted = text.replace(/```(?:sql)?\s*([\s\S]*?)\s*```/gi, (match, code) => {
+                const safeCode = code.trim().replace(/"/g, '&quot;');
+                return `
+                    <div class="sql-code-box">
+                        <div class="sql-code-header">
+                            <span>🗄️ SQLAlchemy 2.0 SQL Query</span>
+                            <button class="sql-copy-btn" type="button" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(code.trim())}')).then(() => showToast('SQL 쿼리가 복사되었습니다.', '📋'))">복사</button>
+                        </div>
+                        <pre class="sql-code-content"><code>${code.trim()}</code></pre>
+                    </div>
+                `;
+            });
+
+            // 2. 마크다운 표(| col1 | col2 |) HTML <table> 변환
+            const lines = formatted.split('\n');
+            let inTable = false;
+            let tableHtml = '';
+            let resultLines = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    const cells = line.split('|').slice(1, -1).map(c => c.trim());
+                    // 구분선 (|---|---|) 스킵
+                    if (cells.every(c => /^[-:]+$/.test(c))) {
+                        continue;
+                    }
+
+                    if (!inTable) {
+                        inTable = true;
+                        tableHtml = '<div class="markdown-table-wrap"><table class="db-result-table"><thead><tr>';
+                        cells.forEach(c => { tableHtml += `<th>${c}</th>`; });
+                        tableHtml += '</tr></thead><tbody>';
+                    } else {
+                        tableHtml += '<tr>';
+                        cells.forEach(c => { tableHtml += `<td>${c}</td>`; });
+                        tableHtml += '</tr>';
+                    }
+                } else {
+                    if (inTable) {
+                        inTable = false;
+                        tableHtml += '</tbody></table></div>';
+                        resultLines.push(tableHtml);
+                        tableHtml = '';
+                    }
+                    resultLines.push(lines[i]);
+                }
+            }
+            if (inTable) {
+                tableHtml += '</tbody></table></div>';
+                resultLines.push(tableHtml);
+            }
+
+            formatted = resultLines.join('\n');
+
+            // 3. 인라인 서식 적용
+            formatted = formatted
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+                .replace(/\n/g, '<br>');
+
+            formatted = formatted.replace(/<\/div><br>/g, '</div>');
+            return formatted;
+        }
+
         function appendMessage(sender, text, action = null) {
             const row = document.createElement('div');
             row.className = `message-row ${sender}`;
@@ -145,9 +217,7 @@
             const bubble = document.createElement('div');
             bubble.className = 'bubble';
             
-            let formatted = text
-                .replace(/\n/g, '<br>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            let formatted = formatChatText(text);
             
             bubble.innerHTML = formatted + `<span class="timestamp">${getTimeString()}</span>`;
             bubbleWrap.appendChild(bubble);
@@ -173,6 +243,19 @@
                 jumpBtn.onclick = () => goToResearchWithArticles(action);
                 actionCard.appendChild(jumpBtn);
                 bubbleWrap.appendChild(actionCard);
+            }
+
+            // [기능 추가] SQLAlchemy 2.0 AI DB 쿼리 실행 결과 상태 배지 카드
+            if (sender === 'bot' && action && action.type === 'db_query_result') {
+                const dbBadge = document.createElement('div');
+                const isDelete = action.query_type === 'DELETE';
+                const actionLabel = isDelete ? '삭제' : (action.query_type === 'READ' ? '조회' : '처리');
+                dbBadge.className = `chat-db-badge-card ${isDelete ? 'delete-badge' : ''}`;
+                dbBadge.innerHTML = `
+                    <span class="db-badge-type ${isDelete ? 'delete-type' : ''}">⚡ ${action.query_type}</span>
+                    <span class="db-badge-info">SQLAlchemy 2.0 엔진 실행 완료 (${actionLabel}: <strong>${action.row_count}</strong>건)</span>
+                `;
+                bubbleWrap.appendChild(dbBadge);
             }
             
             row.appendChild(avatar);
