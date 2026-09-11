@@ -3,7 +3,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/package%20manager-uv-blueviolet.svg)](https://github.com/astral-sh/uv)
-[![Release](https://img.shields.io/badge/release-v1.5.0-green.svg)](https://github.com/algethi97/baseball_AI-breifing_project/releases)
+[![Release](https://img.shields.io/badge/release-v1.6.0-green.svg)](https://github.com/algethi97/baseball_AI-breifing_project/releases)
 
 ---
 
@@ -12,6 +12,22 @@
 본 프로젝트는 프로야구(KBO) 팬과 코칭스태프, 데이터 분석가를 위한 **올인원(All-in-One) 야구 전문 AI 데스크톱 애플리케이션**입니다.
 
 네이버 스포츠 뉴스를 실시간으로 대량 수집하고 기사 본문(원문 전체)을 정밀 파싱하며, OpenAI 최신 LLM을 결합하여 검색 키워드에 100% 초집중된 심층 브리핑 보고서를 자동 생성합니다. 또한 자연어 대화만으로 기사를 자동 수집하는 지능형 스마트 RAG 챗봇을 탑재하였으며, 수집된 기사 원문과 AI 보고서를 관계형 SQLite 데이터베이스로 원클릭 추출하고, 보관된 마크다운 보고서를 인앱에서 즉시 열람할 수 있습니다. 아울러 기상청 공공데이터를 통해 전국 11개 프로야구 구장의 실시간 기상 관측 데이터 및 **우천 취소 우려 지수**를 직관적인 대시보드로 제공합니다.
+
+---
+
+## 📸 프로그램 화면 미리보기 (Screenshots)
+
+| 💬 1. 스마트 RAG & AI 챗봇 (`SQLAlchemy 2.0` 제어) | 📰 2. 기사 수집 & AI 심층 분석 보고서 |
+| :---: | :---: |
+| ![AI 챗봇 화면](docs/images/screenshot_chat.png) | ![기사 수집 및 분석 화면](docs/images/screenshot_research.png) |
+| **자연어 기사 자동 수집 & 직전 대화 맥락 기억 DB 제어** | **원문 기사 병렬 크롤링 & AI 맞춤형 포커스 브리핑** |
+
+<br>
+
+| ☀️ 3. 전국 11개 구장 실시간 기상정보 & 관측 이력 DB 대시보드 |
+| :---: |
+| ![구장별 실시간 날씨 화면](docs/images/screenshot_weather.png) |
+| **기상청 초단기실황 연동, 우천 취소 우려 지수 & 시간대별(11시/14시/18시) 관측 기록 영구 적재** |
 
 ---
 
@@ -179,6 +195,16 @@ uv run python src/mini_project_0909/app.py
 
 ## 📋 버전 이력 (Release History)
 
+- **`v1.6.0`** (2026-09-11)
+  - **KBO 전국 11개 구장 날씨 기록 DB 영구 적재 시스템 구축 (`stadium_weather_history`)**: 기상청 초단기실황 관측치를 주요 시간대(11:00 점검, 14:00 낮경기, 18:00 야간경기 등)별로 고속 UPSERT 적재
+  - **SQLAlchemy 2.0 기반 AI 자연어 DB 제어 엔진 탑재 & 직전 쿼리 컨텍스트 기억**:
+    - AI가 자연어 질의를 해석하여 최적 SQLite SQL(DDL, READ, WRITE)로 변환 및 자가 수정(Self-Correction) 실행
+    - 직전 조회 결과(기사 ID 목록 등)를 메모리에 기억하여 *"방금 조회된 기사들 삭제해줘"*, *"방금 나온 기사들 북마크 등록"* 등의 연속 작업 지원
+  - **UI 구장 날씨 대시보드 과거 이력 뷰어 및 즉시 DB 저장 기능 추가**:
+    - `[🔴 실시간 관측]` ↔ `[📅 날씨 기록 이력]` 모드 전환 세그먼트 및 일자/시간대 드롭다운 선택 뷰어 제공
+    - `[💾 현재 날씨 DB 저장]` 원클릭 버튼으로 실시간 관측 데이터를 즉시 DB에 영구 보관
+  - **기상청 API 중복 호출 방지 최적화**: 1차 실시간 조회 데이터를 인메모리로 재사용하여 외부 HTTP API 호출 횟수를 50% 절감(22회 ➔ 11회, 소요시간 약 1.1초)
+  - **프로그램 3대 핵심 탭 화면 스크린샷 README 문서화 반영**
 - **`v1.5.0`** (2026-09-11)
   - **자연어 기사 수집 명령 인식 & 자동 크롤링 파이프라인 탑재**: 사용자의 자연어 구어체 질의에서 키워드와 기간을 유연하게 추출하여 백엔드 자동 크롤링 실행
   - **챗봇 인터랙티브 액션 카드 및 원클릭 탭 이동 (`goToResearchWithArticles`)**: 수집 완료 시 챗봇 메시지에 전용 액션 버튼을 생성하여, 클릭 시 검색어/기간 입력값 자동 동기화와 함께 `[기사 수집 & 분석]` 탭으로 즉시 전환
