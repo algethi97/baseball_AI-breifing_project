@@ -4,8 +4,9 @@
 
 import os
 import re
+import json
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -38,15 +39,16 @@ class BaseballBotAPI:
         self.client = client or (OpenAI(api_key=api_key) if api_key else None)
         self.model = model
 
-        # 챗봇용 시스템 지침
+        # 챗봇용 시스템 지침 (KBO 전문 데이터 분석관 & 해설위원 페르소나)
         self.chat_instructions = (
-            "당신은 한국 프로야구(KBO) 및 야구 뉴스 전문 AI 어시스턴트 '야구 브리핑 AI'입니다.\n"
-            "사용자에게 친절하고 신뢰감 있는 어조로 답변하세요.\n"
-            "[주요 역할]\n"
-            "1. 야구 경기 규칙, 구단 소식, 최신 이슈 및 선수 정보에 대해 명확하고 흥미롭게 답변합니다.\n"
-            "2. 상단 탭에서 '기사 수집 & 요약 보고서' 기능을 통해 sports.news.naver.com 기사 크롤링 및 CSV/MD 저장을 지원함을 안내합니다.\n"
-            "3. '구장별 실시간 날씨' 탭을 통해 전국 KBO 구장의 실시간 기상 상태 및 우천 취소 가능성 정보를 제공함을 안내합니다.\n"
-            "4. 답변은 가독성 좋게 핵심 위주로 불릿포인트나 단락을 나누어 작성하세요."
+            "당신은 대한민국 프로야구(KBO) 전문 수석 데이터 분석관이자 베테랑 야구 해설위원 '야구 브리핑 AI'입니다.\n"
+            "사용자에게 정중하고 신뢰감 넘치며, 야구에 대한 전문성과 열정이 묻어나는 어조로 답변하세요.\n\n"
+            "[핵심 브리핑 원칙]\n"
+            "1. [철저한 데이터 그라운딩]: 제공된 [기사 데이터베이스]와 [AI 심층 보고서]의 팩트(투구수, 이닝, 피안타, 탈삼진, 결승타, 경기 일자, 상대 구단, 승부처 등)를 최우선 근거로 활용하여 구체적이고 깊이 있게 설명하세요.\n"
+            "2. [세부 경기 디테일 강조]: 단순한 경기 결과 나열에 그치지 않고 승부처(클러치 상황), 볼카운트 싸움, 투구 패턴, 감독 코멘트 등 기사 본문 속 디테일을 생생하게 짚어주세요.\n"
+            "3. [안내원 멘트 절대 금지]: '상단 탭에서 기능을 이용할 수 있습니다' 같은 콜센터 안내원 말투는 일절 사용하지 말고, 질문 자체에 대한 전문적인 야구 분석과 답변에 집중하세요.\n"
+            "4. [정보 한계의 정직한 명시]: 제공된 수집 데이터에 없는 최신 기록이나 모호한 사실에 대해서는 거짓으로 꾸며내지 말고, 현재 연동된 데이터 내에서 확인된 사실을 바탕으로 솔직하고 명확하게 한계를 밝히세요.\n"
+            "5. [가독성 극대화]: 단락 구분, 핵심 수치 볼드체(**강조**), 깔끔한 불릿포인트를 적극 사용하여 가독성 높게 작성하세요."
         )
 
         # 챗봇 대화 기록
@@ -75,52 +77,205 @@ class BaseballBotAPI:
             "has_report": bool(self.current_report),
         }
 
+    def _detect_crawl_intent(self, message: str) -> dict:
+        """
+        사용자의 메시지가 네이버 스포츠 기사 수집(크롤링/검색) 요청인지 분석하고,
+        키워드와 수집 기간(start_date, end_date)을 추출합니다.
+        """
+        if not self.client:
+            return {"is_crawl": False, "keyword": "", "start_date": "", "end_date": ""}
+
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        default_start_str = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+
+        prompt = f"""당신은 사용자의 야구 챗봇 대화에서 '기사 수집(크롤링/검색) 요청' 여부를 판별하고 파라미터를 추출하는 분류기입니다.
+오늘 기준일: {today_str} (기본 시작일 7일전: {default_start_str})
+
+사용자의 입력: "{message}"
+
+사용자가 네이버 스포츠 기사를 검색/수집/크롤링/모아달라고 요청하는 의도인지 판단하세요.
+- 단순히 이미 수집된 기사나 야구 상식/선수 의견을 질문하는 경우는 is_crawl: false 입니다. (예: "이로운 어제 어땠어?", "어제 잠실 경기 결과 알려줘", "홈런 몇 개 쳤어?")
+- 새롭게 기사를 찾아달라거나 수집해달라고 요청하는 경우 is_crawl: true 입니다. (예: "류현진 최근 일주일 기사 모아줘", "김도영 이번 달 기사 찾아봐", "이로운 9월 1일부터 9월 9일까지 기사 수집해줘", "한화 이글스 소식 긁어와줘", "기아 타이거즈 기사 검색해줘", "최근 야구 뉴스 모아봐")
+
+is_crawl이 true인 경우:
+1. keyword: 검색할 대상 키워드(선수명, 구단명, 핵심 야구 토픽)만 간결한 단어로 추출하세요. 구체적 대상이 없으면 "야구" 또는 핵심 키워드로 지정하세요.
+2. start_date: 시작 날짜 (YYYY-MM-DD). "최근 일주일", "지난 주"는 7일 전. "이번 달"은 이번 달 1일. "어제"는 어제. 언급 없으면 {default_start_str}.
+3. end_date: 종료 날짜 (YYYY-MM-DD). 언급 없으면 {today_str}.
+
+반드시 마크다운 코드블록이나 부가 설명 없이 오직 순수 JSON 형식 한 줄로만 출력하세요:
+{{"is_crawl": true/false, "keyword": "...", "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}}"""
+
+        try:
+            resp = self.client.responses.create(
+                model=self.model,
+                instructions="You are a strict JSON intent classifier. Output pure JSON only without markdown formatting.",
+                input=prompt,
+            )
+            text = resp.output_text.strip()
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+            text = text.strip()
+            data = json.loads(text)
+            if not isinstance(data, dict):
+                return {"is_crawl": False, "keyword": "", "start_date": default_start_str, "end_date": today_str}
+            return data
+        except Exception:
+            return {"is_crawl": False, "keyword": "", "start_date": default_start_str, "end_date": today_str}
+
+    def _find_relevant_articles(self, user_query: str, top_k: int = 4) -> list:
+        """
+        사용자의 질문과 가장 관련성이 높은 상위 top_k개 기사를 선별하여 반환합니다. (Smart RAG)
+        """
+        if not self.collected_articles:
+            return []
+
+        # 쿼리 토큰화 (2글자 이상 단어 추출)
+        query_words = [w.strip() for w in re.findall(r"[가-힣a-zA-Z0-9]{2,}", user_query.lower()) if len(w.strip()) >= 2]
+        if not query_words:
+            return self.collected_articles[:top_k]
+
+        scored_articles = []
+        for a in self.collected_articles:
+            score = 0
+            title = (a.get("title") or "").lower()
+            content = (a.get("content") or a.get("snippet") or "").lower()
+
+            for qw in query_words:
+                if qw in title:
+                    score += 4
+                if qw in content:
+                    score += 1
+
+            if self.current_keyword and self.current_keyword.lower() in title:
+                score += 2
+
+            scored_articles.append((score, a))
+
+        scored_articles.sort(key=lambda x: (x[0], x[1].get("date", "")), reverse=True)
+        return [item[1] for item in scored_articles[:top_k]]
+
     def send_message(self, message: str) -> dict:
         """
-        사용자의 챗봇 질문을 받아 수집된 기사 및 요약 보고서 컨텍스트와 함께 OpenAI Responses API로 답변 반환
+        사용자의 챗봇 질문을 받아 자연어 크롤링 의도 분석 또는
+        수집된 기사 본문 전문(Smart RAG) & 요약 보고서 컨텍스트와 함께 OpenAI Responses API로 답변 반환
         """
         user_text = message.strip()
         if not user_text:
             return {"status": "error", "reply": "질문 내용을 입력해주세요."}
 
+        # 1. 자연어 기사 수집(크롤링) 명령 의도 감지
+        crawl_intent = self._detect_crawl_intent(user_text)
+        if crawl_intent.get("is_crawl") and crawl_intent.get("keyword"):
+            keyword = crawl_intent["keyword"].strip()
+            start_date = crawl_intent.get("start_date", "")
+            end_date = crawl_intent.get("end_date", "")
+
+            # 백그라운드 자동 기사 수집 실행
+            fetch_res = self.fetch_articles(
+                keyword=keyword,
+                start_date=start_date,
+                end_date=end_date,
+                max_results=200,
+            )
+            count = len(self.collected_articles)
+
+            if count > 0:
+                press_samples = list({a.get("press") for a in self.collected_articles if a.get("press")})[:4]
+                press_text = f", {', '.join(press_samples)} 등" if press_samples else ""
+                reply_text = (
+                    f"⚾ **'{keyword}'** 관련 네이버 스포츠 기사 원문 총 **{count}건**을 성공적으로 수집했습니다!\n\n"
+                    f"- 📅 **수집 대상 기간**: `{start_date} ~ {end_date}`\n"
+                    f"- 📰 **주요 수집 매체**: {press_text}\n"
+                    f"- 💡 **분석 안내**: 아래 버튼을 클릭하시면 기사 수집 탭으로 이동하여 전체 기사 목록과 상세 본문을 확인하실 수 있습니다. "
+                    f"또한 수집된 기사에 대해 궁금한 점을 제게 바로 질문하시면 상세히 분석해 드립니다!"
+                )
+            else:
+                reply_text = (
+                    f"⚠️ 지정하신 기간(`{start_date} ~ {end_date}`) 동안 **'{keyword}'** 관련 네이버 스포츠 기사를 찾지 못했습니다.\n\n"
+                    f"키워드 철자를 확인하시거나 수집 기간을 더 넓혀서 다시 요청해 주세요."
+                )
+
+            self.conversation_history.append({"role": "user", "content": user_text})
+            self.conversation_history.append({"role": "assistant", "content": reply_text})
+
+            return {
+                "status": "success",
+                "reply": reply_text,
+                "action": {
+                    "type": "crawl_completed",
+                    "keyword": keyword,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "article_count": count,
+                    "articles": self.collected_articles,
+                },
+            }
+
+        # 2. 일반 질문: 대화 히스토리 업데이트
         self.conversation_history.append({"role": "user", "content": user_text})
         trimmed_input = self.conversation_history[-10:]
 
-        # 현재 수집된 기사 및 생성된 요약 보고서 기반 동적 컨텍스트 조립
+        # 3. 구장 날씨 질문 감지 시 실시간 기상 관측 데이터 자동 연동
+        weather_keywords = ["날씨", "비", "우천", "취소", "우취", "기온", "바람", "구장", "잠실", "고척", "문학", "수원", "대전", "대구", "광주", "사직", "창원", "포항", "울산"]
+        if any(wk in user_text for wk in weather_keywords) and not self.latest_weather_data:
+            try:
+                self.latest_weather_data = get_all_stadiums_weather()
+            except Exception:
+                pass
+
+        # 4. 스마트 RAG 및 동적 컨텍스트 조립
         context_parts = [self.chat_instructions]
 
-        if self.current_report or self.collected_articles:
-            context_parts.append("\n\n[현재 연동된 야구 기사 & 보고서 데이터베이스]")
+        # 4-1. 기사 데이터베이스 컨텍스트 (보고서 유무와 무관하게 항상 주입)
+        if self.collected_articles:
+            context_parts.append("\n\n[현재 연동된 네이버 스포츠 기사 데이터베이스]")
             if self.current_keyword:
-                context_parts.append(f"- 현재 수집 검색어: '{self.current_keyword}'")
-            if self.collected_articles:
-                context_parts.append(f"- 수집된 기사 건수: 총 {len(self.collected_articles)}건")
+                context_parts.append(f"- 수집 검색어: '{self.current_keyword}'")
+            context_parts.append(f"- 총 수집 기사 수: {len(self.collected_articles)}건")
 
-            if self.current_report:
-                context_parts.append(
-                    "\n[최근 생성된 AI 요약 보고서 전문]\n"
-                    f"{self.current_report}\n\n"
-                    "※ 지침: 사용자가 보고서의 내용, 핵심 요약, 경기 리뷰, 세부 분석 등에 대해 질문하면 위 보고서 전문을 기반으로 명확하고 구체적으로 답변하세요."
-                )
-                articles_list = [
-                    f"- [{a.get('date', '')}] {a.get('title', '')} ({a.get('press', '')}) : {(a.get('content') or a.get('snippet', ''))[:100]}"
-                    for a in self.collected_articles[:50]
-                ]
-                context_parts.append(
-                    "\n[수집된 주요 기사 목록 (일부 발췌)]\n"
-                    + "\n".join(articles_list)
-                    + "\n\n※ 지침: 사용자가 수집된 기사에 대해 물어보면 위 목록을 참고하여 신뢰성 높게 답변하세요."
-                )
+            # Smart RAG: 질문과 가장 밀접한 상위 핵심 기사의 본문 전문 추출
+            relevant_articles = self._find_relevant_articles(user_text, top_k=4)
+            if relevant_articles:
+                context_parts.append("\n[사용자 질문과 가장 관련 깊은 핵심 기사 원문 전문]")
+                for idx, art in enumerate(relevant_articles, 1):
+                    art_title = art.get("title", "")
+                    art_press = art.get("press", "")
+                    art_date = art.get("date", "")
+                    art_content = art.get("content") or art.get("snippet", "")
+                    # 최대 1800자까지 본문 디테일 보존
+                    trimmed_content = art_content[:1800] if len(art_content) > 1800 else art_content
+                    context_parts.append(
+                        f"### 기사 {idx}. [{art_press}] {art_title} ({art_date})\n"
+                        f"본문 전문: {trimmed_content}\n"
+                    )
 
+            # 전체 기사 색인 목록 (광범위한 시야 제공)
+            index_list = [
+                f"- [{a.get('date', '')}] {a.get('title', '')} ({a.get('press', '')})"
+                for a in self.collected_articles[:40]
+            ]
+            context_parts.append("\n[전체 수집 기사 색인 목록]\n" + "\n".join(index_list))
+
+        # 4-2. AI 요약 보고서 전문 (작성되어 있을 경우 주입)
+        if self.current_report:
+            context_parts.append(
+                f"\n\n[최근 작성된 AI 심층 분석 보고서 전문]\n{self.current_report}\n\n"
+                "※ 지침: 사용자가 보고서 요약, 경기 리뷰, 분석 내용 등에 대해 질문하면 위 보고서의 심층 분석 내용을 바탕으로 명확히 답변하세요."
+            )
+
+        # 4-3. 실시간 구장 날씨 데이터
         if self.latest_weather_data and self.latest_weather_data.get("stadiums"):
             w_list = [
                 f"- {s['name']}({s['team_short']}): {s['temp']}, 강수 {s['rain']}, 풍속 {s['wind_speed']}, 진행상태: {s['status_label']}"
                 for s in self.latest_weather_data["stadiums"]
             ]
             context_parts.append(
-                f"\n\n[실시간 KBO 구장별 기상정보 ({self.latest_weather_data.get('base_datetime', '')})]\n"
+                f"\n\n[실시간 KBO 구장별 기상 관측 정보 ({self.latest_weather_data.get('base_datetime', '')})]\n"
                 + "\n".join(w_list)
-                + "\n\n※ 지침: 사용자가 특정 야구장의 오늘 날씨나 우천 취소 여부, 경기 진행 가능성을 물어보면 위 실시간 기상청 관측 정보를 토대로 답변하세요."
+                + "\n\n※ 지침: 특정 구장의 날씨, 우천 취소 가능성, 경기 진행 여부를 질문받으면 위 기상청 실시간 관측 정보를 근거로 정확히 답변하세요."
             )
 
         current_instructions = "\n".join(context_parts)

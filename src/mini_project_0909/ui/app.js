@@ -133,7 +133,7 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        function appendMessage(sender, text) {
+        function appendMessage(sender, text, action = null) {
             const row = document.createElement('div');
             row.className = `message-row ${sender}`;
 
@@ -150,13 +150,67 @@
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
             bubble.innerHTML = formatted + `<span class="timestamp">${getTimeString()}</span>`;
-            
             bubbleWrap.appendChild(bubble);
+
+            // [기능 추가] 자연어 기사 수집 완료 액션 카드 및 탭 이동 버튼 연동
+            if (sender === 'bot' && action && action.type === 'crawl_completed' && action.article_count > 0) {
+                const actionCard = document.createElement('div');
+                actionCard.className = 'chat-action-card';
+                actionCard.innerHTML = `
+                    <div class="action-card-header">
+                        <span class="action-badge">✅ 기사 원문 수집 완료</span>
+                        <span class="action-count">총 <strong>${action.article_count}</strong>건</span>
+                    </div>
+                    <div class="action-card-meta">
+                        <span>🔍 <strong>'${action.keyword}'</strong></span>
+                        <span>📅 ${action.start_date} ~ ${action.end_date}</span>
+                    </div>
+                `;
+                const jumpBtn = document.createElement('button');
+                jumpBtn.className = 'action-jump-btn';
+                jumpBtn.type = 'button';
+                jumpBtn.innerHTML = '<span>📰</span> <strong>[기사 수집 & 분석]</strong> 탭에서 결과 보기 ➔';
+                jumpBtn.onclick = () => goToResearchWithArticles(action);
+                actionCard.appendChild(jumpBtn);
+                bubbleWrap.appendChild(actionCard);
+            }
+            
             row.appendChild(avatar);
             row.appendChild(bubbleWrap);
 
             messagesContainer.insertBefore(row, typingIndicator);
             scrollToBottom();
+        }
+
+        // [신규 기능] 챗봇에서 수집된 기사 데이터를 가지고 기사 수집 & 분석 탭으로 즉시 이동
+        function goToResearchWithArticles(action) {
+            if (!action) return;
+
+            const { keyword, start_date, end_date, articles, article_count } = action;
+
+            // 1. 입력 필드 자동 채움
+            const crawlKeyword = document.getElementById('crawlKeyword');
+            const crawlStartDate = document.getElementById('crawlStartDate');
+            const crawlEndDate = document.getElementById('crawlEndDate');
+            const reportStartDate = document.getElementById('reportStartDate');
+            const reportEndDate = document.getElementById('reportEndDate');
+
+            if (crawlKeyword && keyword) crawlKeyword.value = keyword;
+            if (crawlStartDate && start_date) crawlStartDate.value = start_date;
+            if (crawlEndDate && end_date) crawlEndDate.value = end_date;
+            if (reportStartDate && start_date) reportStartDate.value = start_date;
+            if (reportEndDate && end_date) reportEndDate.value = end_date;
+
+            // 2. 기사 목록 렌더링 및 전역 상태 동기화
+            if (articles && articles.length > 0) {
+                currentArticles = articles;
+                renderArticles(currentArticles);
+                updateChatContextUI(keyword, currentArticles.length, !!currentReportText);
+            }
+
+            // 3. 탭 전환
+            switchTab('research');
+            showToast(`'${keyword}' 기사 수집 결과 탭으로 이동했습니다. (${article_count || (articles ? articles.length : 0)}건)`, '📰');
         }
 
         function showTyping(show) {
@@ -178,7 +232,13 @@
                     const response = await window.pywebview.api.send_message(text);
                     showTyping(false);
                     if (response && response.reply) {
-                        appendMessage('bot', response.reply);
+                        // 백그라운드 수집 결과가 있으면 전역 기사 상태 및 상단 연동 바 사전 동기화
+                        if (response.action && response.action.type === 'crawl_completed' && response.action.articles) {
+                            currentArticles = response.action.articles;
+                            renderArticles(currentArticles);
+                            updateChatContextUI(response.action.keyword, currentArticles.length, !!currentReportText);
+                        }
+                        appendMessage('bot', response.reply, response.action);
                     } else {
                         appendMessage('bot', '응답을 가져오지 못했습니다.');
                     }
