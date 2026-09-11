@@ -941,6 +941,107 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .weather-mode-segment {
+            display: flex;
+            background: #e2e8f0;
+            padding: 3px;
+            border-radius: 8px;
+            gap: 2px;
+        }
+
+        .mode-seg-btn {
+            background: transparent;
+            border: none;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #475569;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .mode-seg-btn.active {
+            background: #ffffff;
+            color: var(--primary-color);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse-dot 1.8s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        .weather-action-buttons {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .weather-history-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            animation: fadeIn 0.3s ease;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .history-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .history-bar-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #334155;
+        }
+
+        .history-select {
+            padding: 6px 12px;
+            font-size: 0.82rem;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #0f172a;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .history-select:focus {
+            border-color: var(--primary-color);
+        }
+
+        .history-info-badge {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #64748b;
+            background: #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 14px;
         }
 
         .weather-filter-group {

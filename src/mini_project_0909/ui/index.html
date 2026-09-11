@@ -214,21 +214,55 @@
                 <div class="weather-dashboard-header">
                     <div class="weather-header-left">
                         <div class="weather-title">
-                            <span>☀️</span>
-                            <span>KBO 전국 구장 실시간 기상정보</span>
+                            <span id="weatherHeaderIcon">☀️</span>
+                            <span id="weatherHeaderTitle">KBO 전국 구장 실시간 기상정보</span>
                         </div>
                         <span class="weather-time-badge" id="weatherTimeBadge">기상청 발표 기준</span>
                     </div>
 
                     <div class="weather-header-actions">
+                        <!-- 날씨 모드 전환 (실시간 vs DB 기록 이력) -->
+                        <div class="weather-mode-segment">
+                            <button class="mode-seg-btn active" id="modeBtn-live" onclick="switchWeatherMode('live')">
+                                <span class="live-dot"></span> 실시간 관측
+                            </button>
+                            <button class="mode-seg-btn" id="modeBtn-history" onclick="switchWeatherMode('history')">
+                                📅 날씨 기록 이력
+                            </button>
+                        </div>
+
+                        <!-- 구장 필터 (전체/정규/제2) -->
                         <div class="weather-filter-group">
-                            <button class="filter-btn active" id="filterBtn-all" onclick="filterStadiums('all')">전체 구장 (11)</button>
-                            <button class="filter-btn" id="filterBtn-main" onclick="filterStadiums('main')">정규 구장 (9)</button>
+                            <button class="filter-btn active" id="filterBtn-all" onclick="filterStadiums('all')">전체 (11)</button>
+                            <button class="filter-btn" id="filterBtn-main" onclick="filterStadiums('main')">정규 (9)</button>
                             <button class="filter-btn" id="filterBtn-secondary" onclick="filterStadiums('secondary')">제2구장 (2)</button>
                         </div>
-                        <button class="btn btn-primary" id="btnRefreshWeather" onclick="loadStadiumWeather(true)">
-                            <span>🔄</span> 날씨 새로고침
+
+                        <!-- 액션 버튼들 -->
+                        <div class="weather-action-buttons">
+                            <button class="btn btn-secondary" id="btnSaveWeatherDb" onclick="saveCurrentWeatherToDatabase()" title="현재 날씨 관측치를 DB에 즉시 영구 저장">
+                                <span>💾</span> 현재 날씨 DB 저장
+                            </button>
+                            <button class="btn btn-primary" id="btnRefreshWeather" onclick="loadStadiumWeather(true)">
+                                <span>🔄</span> 새로고침
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 과거 날씨 이력 조회 컨트롤 바 (이력 모드 활성화 시 표시) -->
+                <div class="weather-history-bar" id="weatherHistoryBar" style="display: none;">
+                    <div class="history-bar-left">
+                        <span class="history-bar-label">📅 관측 기록 선택:</span>
+                        <select class="history-select" id="selectWeatherHistoryDate" onchange="onWeatherHistorySelectChange()">
+                            <option value="">기록 불러오는 중...</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline" onclick="loadSelectedWeatherHistory()">
+                            <span>🔍</span> 이력 조회
                         </button>
+                    </div>
+                    <div class="history-bar-right">
+                        <span class="history-info-badge" id="weatherHistoryCountBadge">저장된 기록: 0건</span>
                     </div>
                 </div>
 

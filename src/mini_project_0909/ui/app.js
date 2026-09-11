@@ -871,8 +871,38 @@
         });
 
         // ============================================================
-        // 구장별 실시간 날씨 대시보드 로직
+        // 구장별 실시간 날씨 대시보드 및 DB 이력 관리 로직
         // ============================================================
+        let weatherViewMode = 'live'; // 'live' | 'history'
+
+        async function switchWeatherMode(mode) {
+            weatherViewMode = mode;
+            const btnLive = document.getElementById('modeBtn-live');
+            const btnHistory = document.getElementById('modeBtn-history');
+            const historyBar = document.getElementById('weatherHistoryBar');
+            const titleEl = document.getElementById('weatherHeaderTitle');
+            const iconEl = document.getElementById('weatherHeaderIcon');
+            const refreshBtn = document.getElementById('btnRefreshWeather');
+
+            if (mode === 'live') {
+                if (btnLive) btnLive.classList.add('active');
+                if (btnHistory) btnHistory.classList.remove('active');
+                if (historyBar) historyBar.style.display = 'none';
+                if (titleEl) titleEl.innerText = 'KBO 전국 구장 실시간 기상정보';
+                if (iconEl) iconEl.innerText = '☀️';
+                if (refreshBtn) refreshBtn.style.display = 'inline-flex';
+                loadStadiumWeather();
+            } else {
+                if (btnHistory) btnHistory.classList.add('active');
+                if (btnLive) btnLive.classList.remove('active');
+                if (historyBar) historyBar.style.display = 'flex';
+                if (titleEl) titleEl.innerText = 'KBO 전국 구장 날씨 기록 이력';
+                if (iconEl) iconEl.innerText = '📅';
+                if (refreshBtn) refreshBtn.style.display = 'none';
+                loadWeatherHistoryDates();
+            }
+        }
+
         async function loadStadiumWeather(force = false) {
             const btn = document.getElementById('btnRefreshWeather');
             const container = document.getElementById('stadiumWeatherGrid');
@@ -902,7 +932,7 @@
                             timeBadge.innerText = res.base_datetime;
                         }
                         renderStadiumCards();
-                        showToast(`전국 ${currentStadiumWeather.length}개 구장 실시간 기상정보 갱신 완료!`, '☀️');
+                        showToast(`전국 ${currentStadiumWeather.length}개 구장 실시간 기상정보 갱신 완료! (DB 자동 보관)`, '☀️');
                     } else {
                         showToast(res.message || '기상청 데이터 조회 실패', '❌');
                     }
@@ -932,7 +962,143 @@
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '<span>🔄</span> 날씨 새로고침';
+                    btn.innerHTML = '<span>🔄</span> 새로고침';
+                }
+            }
+        }
+
+        async function loadWeatherHistoryDates() {
+            const select = document.getElementById('selectWeatherHistoryDate');
+            const badge = document.getElementById('weatherHistoryCountBadge');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">기록 불러오는 중...</option>';
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.get_weather_history_dates) {
+                    const res = await window.pywebview.api.get_weather_history_dates();
+                    if (res && res.status === 'success' && res.dates && res.dates.length > 0) {
+                        select.innerHTML = res.dates.map(d => 
+                            `<option value="${d.base_date}|${d.base_time}">${d.base_date} ${d.base_time} (${d.count}개 구장)</option>`
+                        ).join('');
+                        if (badge) badge.innerText = `저장된 회차: 총 ${res.dates.length}회`;
+                        // 가장 최신 이력 자동 로드
+                        loadSelectedWeatherHistory();
+                    } else {
+                        select.innerHTML = '<option value="">저장된 날씨 기록이 없습니다.</option>';
+                        if (badge) badge.innerText = '저장된 기록: 0건';
+                        showToast('아직 DB에 저장된 과거 날씨 기록이 없습니다. [현재 날씨 DB 저장]을 눌러보세요.', 'ℹ️');
+                    }
+                } else {
+                    select.innerHTML = '<option value="2026-09-11|15:00">2026-09-11 15:00 (11개 구장)</option>';
+                }
+            } catch (err) {
+                select.innerHTML = '<option value="">기록 조회 실패</option>';
+            }
+        }
+
+        function onWeatherHistorySelectChange() {
+            loadSelectedWeatherHistory();
+        }
+
+        async function loadSelectedWeatherHistory() {
+            const select = document.getElementById('selectWeatherHistoryDate');
+            const container = document.getElementById('stadiumWeatherGrid');
+            if (!select || !select.value) return;
+
+            const [baseDate, baseTime] = select.value.split('|');
+            if (!baseDate || !baseTime) return;
+
+            if (container) {
+                container.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1 / -1;">
+                        <div class="empty-state-icon">⏳</div>
+                        <div class="empty-state-text">${baseDate} ${baseTime} 관측 기록을 불러오고 있습니다...</div>
+                    </div>`;
+            }
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.get_weather_history) {
+                    const res = await window.pywebview.api.get_weather_history(baseDate, baseTime);
+                    if (res && res.status === 'success' && res.stadiums) {
+                        // 기존 구장 메타데이터(color, team_short, city 등) 병합
+                        const stdMetaMap = {
+                            jamsil: { team_short: 'LG / 두산', city: '서울 송파', color: '#C30452', is_dome: false, is_secondary: false },
+                            gocheok: { team_short: '키움', city: '서울 구로', color: '#820024', is_dome: true, is_secondary: false },
+                            munhak: { team_short: 'SSG', city: '인천 미추홀', color: '#CE0E2D', is_dome: false, is_secondary: false },
+                            suwon: { team_short: 'KT', city: '경기 수원', color: '#000000', is_dome: false, is_secondary: false },
+                            daejeon: { team_short: '한화', city: '대전 중구', color: '#FF6600', is_dome: false, is_secondary: false },
+                            daegu: { team_short: '삼성', city: '대구 수성', color: '#074CA1', is_dome: false, is_secondary: false },
+                            gwangju: { team_short: 'KIA', city: '광주 북구', color: '#EA0029', is_dome: false, is_secondary: false },
+                            sajik: { team_short: '롯데', city: '부산 동래', color: '#002955', is_dome: false, is_secondary: false },
+                            changwon: { team_short: 'NC', city: '경남 창원', color: '#315288', is_dome: false, is_secondary: false },
+                            pohang: { team_short: '삼성 (제2구장)', city: '경북 포항', color: '#074CA1', is_dome: false, is_secondary: true },
+                            ulsan: { team_short: '롯데 / 울산', city: '울산 남구', color: 'linear-gradient(90deg, #002955 50%, #c70000 50%)', is_dome: false, is_secondary: true },
+                        };
+
+                        currentStadiumWeather = res.stadiums.map(item => {
+                            const meta = stdMetaMap[item.stadium_id] || {};
+                            return {
+                                id: item.stadium_id,
+                                name: item.stadium_name,
+                                temp: item.temp_str || (item.temp ? `${item.temp}℃` : '--'),
+                                rain: `${item.rain || 0.0} mm`,
+                                humidity: item.humidity ? `${item.humidity}%` : '--',
+                                wind_speed: `${item.wind_speed || 0.0} m/s`,
+                                icon: item.icon || '☀️',
+                                status_label: item.status_label || '🟢 정상 진행 가능',
+                                badge_class: item.badge_class || 'badge-safe',
+                                status_desc: item.status_desc || '관측 기록 보관 데이터',
+                                team_short: meta.team_short || '',
+                                city: meta.city || '',
+                                color: meta.color || '#333333',
+                                is_dome: meta.is_dome || false,
+                                is_secondary: meta.is_secondary || false,
+                            };
+                        });
+
+                        const timeBadge = document.getElementById('weatherTimeBadge');
+                        if (timeBadge) {
+                            timeBadge.innerText = `${baseDate} ${baseTime} 관측 기록`;
+                        }
+                        renderStadiumCards();
+                        showToast(`${baseDate} ${baseTime} 날씨 이력 (${currentStadiumWeather.length}개 구장) 로드 완료!`, '📋');
+                    } else {
+                        showToast(res.message || '해당 시간대 날씨 기록이 없습니다.', '⚠️');
+                    }
+                }
+            } catch (err) {
+                showToast(`이력 로드 실패: ${err.message || err}`, '❌');
+            }
+        }
+
+        async function saveCurrentWeatherToDatabase() {
+            const btn = document.getElementById('btnSaveWeatherDb');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> 저장 중...';
+            }
+
+            try {
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.save_current_weather_record) {
+                    const res = await window.pywebview.api.save_current_weather_record();
+                    if (res && res.status === 'success') {
+                        showToast(`💾 전국 11개 구장 현재 날씨 DB 저장 완료! (${res.base_date} ${res.base_time})`, '✅');
+                        if (weatherViewMode === 'history') {
+                            loadWeatherHistoryDates();
+                        }
+                    } else {
+                        showToast(res.message || '날씨 DB 저장 실패', '❌');
+                    }
+                } else {
+                    showToast('현재 환경에서는 DB 저장을 지원하지 않습니다 (테스트 모드)', 'ℹ️');
+                }
+            } catch (e) {
+                showToast(`저장 오류: ${e.message || e}`, '❌');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>💾</span> 현재 날씨 DB 저장';
                 }
             }
         }
